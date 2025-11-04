@@ -1,0 +1,20 @@
+# Rust
+rust/target/
+rust/Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# WASM build output
+dist/
+pkg/
+
+# Editor
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

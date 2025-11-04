@@ -66,10 +66,31 @@
         </div>
     </div>
 
-    <script>
+    <script type="module">
         const input = document.getElementById('command-input');
         const output = document.getElementById('output');
         const terminal = document.getElementById('terminal');
+
+        // Load WASM module
+        let wasm = null;
+        let wasmLoaded = false;
+
+        async function initWasm() {
+            try {
+                const wasmModule = await import('./pkg/terminal_wasm.js');
+                await wasmModule.default();
+                wasm = wasmModule;
+                wasmLoaded = true;
+                addOutput('WASM module loaded successfully!');
+                addOutput('Try: rust-hello, rust-info, or fib 10');
+            } catch (err) {
+                console.error('Failed to load WASM:', err);
+                addOutput('Warning: WASM module not loaded. Rust commands unavailable.');
+            }
+        }
+
+        // Initialize WASM
+        initWasm();
 
         // Keep input focused
         terminal.addEventListener('click', () => {
@@ -80,36 +101,54 @@
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') {
                 const command = input.value.trim();
-                
+
                 // Display the command
                 addOutput(`> ${command}`);
-                
+
                 // Process the command
                 if (command === '') {
                     // Do nothing for empty command
                 } else if (command === 'help') {
                     addOutput('Available commands:');
-                    addOutput('  help    - Show this help message');
-                    addOutput('  about   - Learn more about this site');
-                    addOutput('  clear   - Clear the terminal');
+                    addOutput('  help       - Show this help message');
+                    addOutput('  about      - Learn more about this site');
+                    addOutput('  clear      - Clear the terminal');
+                    if (wasmLoaded) {
+                        addOutput('  rust-hello - Greeting from Rust/WASM');
+                        addOutput('  rust-info  - Info about the WASM module');
+                        addOutput('  fib N      - Calculate Nth fibonacci number (Rust)');
+                    }
                 } else if (command === 'about') {
                     addOutput('This is a minimal terminal-style website.');
-                    addOutput('Simple, clean, and easy to navigate.');
+                    addOutput('Powered by Rust + WebAssembly + vanilla JS.');
                 } else if (command === 'clear') {
                     output.innerHTML = '';
+                } else if (wasmLoaded && command.startsWith('fib ')) {
+                    const n = parseInt(command.substring(4));
+                    if (isNaN(n)) {
+                        addOutput('Usage: fib <number>');
+                    } else if (n < 0 || n > 93) {
+                        addOutput('Please enter a number between 0 and 93');
+                    } else {
+                        const result = wasm.fibonacci(n);
+                        addOutput(`fibonacci(${n}) = ${result}`);
+                    }
+                } else if (wasmLoaded && (command === 'rust-hello' || command === 'rust-info')) {
+                    const result = wasm.process_command(command);
+                    addOutput(result);
                 } else {
                     addOutput(`Command not found: ${command}`);
                     addOutput(`Type 'help' for available commands.`);
                 }
-                
+
                 // Add blank line after output
                 if (command !== 'clear') {
                     addOutput('&nbsp;');
                 }
-                
+
                 // Clear input
                 input.value = '';
-                
+
                 // Scroll to bottom
                 window.scrollTo(0, document.body.scrollHeight);
             }
