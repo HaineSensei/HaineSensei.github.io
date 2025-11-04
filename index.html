@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Terminal</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        #terminal {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        .output-line {
+            margin-bottom: 8px;
+        }
+
+        .prompt {
+            color: #00ff00;
+        }
+
+        #input-line {
+            display: flex;
+            margin-top: 8px;
+        }
+
+        #command-input {
+            background: transparent;
+            border: none;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            outline: none;
+            flex: 1;
+            caret-color: #00ff00;
+        }
+
+        #command-input::selection {
+            background: #00ff0040;
+        }
+    </style>
+</head>
+<body>
+    <div id="terminal">
+        <div id="output">
+            <div class="output-line">Welcome! Type 'help' to see available commands.</div>
+            <div class="output-line">&nbsp;</div>
+        </div>
+        <div id="input-line">
+            <span class="prompt">&gt; </span>
+            <input type="text" id="command-input" autofocus autocomplete="off" spellcheck="false">
+        </div>
+    </div>
+
+    <script>
+        const input = document.getElementById('command-input');
+        const output = document.getElementById('output');
+        const terminal = document.getElementById('terminal');
+
+        // Keep input focused
+        terminal.addEventListener('click', () => {
+            input.focus();
+        });
+
+        // Handle commands
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                const command = input.value.trim();
+                
+                // Display the command
+                addOutput(`> ${command}`);
+                
+                // Process the command
+                if (command === '') {
+                    // Do nothing for empty command
+                } else if (command === 'help') {
+                    addOutput('Available commands:');
+                    addOutput('  help    - Show this help message');
+                    addOutput('  about   - Learn more about this site');
+                    addOutput('  clear   - Clear the terminal');
+                } else if (command === 'about') {
+                    addOutput('This is a minimal terminal-style website.');
+                    addOutput('Simple, clean, and easy to navigate.');
+                } else if (command === 'clear') {
+                    output.innerHTML = '';
+                } else {
+                    addOutput(`Command not found: ${command}`);
+                    addOutput(`Type 'help' for available commands.`);
+                }
+                
+                // Add blank line after output
+                if (command !== 'clear') {
+                    addOutput('&nbsp;');
+                }
+                
+                // Clear input
+                input.value = '';
+                
+                // Scroll to bottom
+                window.scrollTo(0, document.body.scrollHeight);
+            }
+        });
+
+        function addOutput(text) {
+            const line = document.createElement('div');
+            line.className = 'output-line';
+            line.innerHTML = text;
+            output.appendChild(line);
+        }
+    </script>
+</body>
+</html>
