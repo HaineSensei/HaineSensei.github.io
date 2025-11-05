@@ -26,7 +26,8 @@
         }
 
         .output-line {
-            margin-bottom: 8px;
+            min-height: 1.6em;
+            line-height: 1.6;
         }
 
         .prompt {
@@ -81,11 +82,15 @@
                 const wasmModule = await import('./pkg/terminal_wasm.js');
                 await wasmModule.default();
                 wasm = wasmModule;
+
+                // Load the manifest
+                await wasm.load_manifest();
+
                 wasmLoaded = true;
-                addOutput('Try: hello, info, or fib 10');
+                addOutput('Terminal ready. Type \'help\' to get started, or try \'ls\' to list files.');
             } catch (err) {
                 console.error('Failed to load WASM:', err);
-                addOutput('Warning: WASM module not loaded. Rust commands unavailable.');
+                addOutput('Warning: WASM module not loaded. Commands unavailable.');
             }
         }
 
@@ -96,9 +101,6 @@
         terminal.addEventListener('click', () => {
             input.focus();
         });
-
-        // Content commands that have .txt files
-        const contentCommands = ['help', 'about', 'contact'];
 
         // Handle commands
         input.addEventListener('keydown', async (e) => {
@@ -113,28 +115,19 @@
                     // Do nothing for empty command
                 } else if (command === 'clear') {
                     output.innerHTML = '';
-                } else if (contentCommands.includes(command)) {
-                    // Fetch content from file
+                } else if (wasmLoaded) {
+                    // Pass to WASM for processing (now async)
                     try {
-                        const response = await fetch(`content/${command}.txt`);
-                        if (response.ok) {
-                            const content = await response.text();
-                            content.split('\n').forEach(line => addOutput(line));
-                        } else {
-                            addOutput(`Error loading ${command} content`);
+                        const result = await wasm.process_command(command);
+                        if (result) {
+                            result.split('\n').forEach(line => addOutput(line));
                         }
                     } catch (err) {
-                        addOutput(`Error: ${err.message}`);
-                    }
-                } else if (wasmLoaded) {
-                    // Pass to WASM for processing
-                    const result = wasm.process_command(command);
-                    if (result) {
-                        result.split('\n').forEach(line => addOutput(line));
+                        console.error('Command error:', err);
+                        addOutput(`Error: ${err}`);
                     }
                 } else {
-                    addOutput('WASM not loaded. Only content commands available.');
-                    addOutput(`Type 'help' for available commands.`);
+                    addOutput('Terminal not ready. Please wait...');
                 }
 
                 // Add blank line after output
