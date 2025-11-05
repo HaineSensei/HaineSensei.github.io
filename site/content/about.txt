@@ -1,0 +1,10 @@
+About Me
+--------
+
+This is a terminal-style website built with:
+- Rust + WebAssembly
+- Vanilla JavaScript
+- GitHub Actions for automated deployment
+
+The site itself is the project - a minimal, clean interface
+that avoids traditional frontend frameworks.

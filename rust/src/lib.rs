@@ -1,29 +1,50 @@
 use wasm_bindgen::prelude::*;
 
-/// Simple greeting function - example of calling Rust from JS
-#[wasm_bindgen]
-pub fn greet(name: &str) -> String {
-    format!("Hello from Rust, {}!", name)
-}
-
-/// Process a command - example of how you might handle terminal commands in Rust
+/// Main command processor - handles all non-content commands
+/// Add new commands here!
 #[wasm_bindgen]
 pub fn process_command(command: &str) -> String {
-    match command.trim() {
-        "rust-hello" => "Hello from Rust! This command was processed by WebAssembly.".to_string(),
-        "rust-info" => {
+    let parts: Vec<&str> = command.trim().split_whitespace().collect();
+
+    if parts.is_empty() {
+        return String::new();
+    }
+
+    match parts[0] {
+        "hello" => {
+            "Hello from Rust! This command was processed by WebAssembly.".to_string()
+        }
+
+        "info" => {
             "Rust WebAssembly Info:\n\
              - Compiled with wasm-bindgen\n\
              - Running in your browser\n\
              - Fast and efficient!".to_string()
         }
-        _ => format!("Rust doesn't recognize command: {}", command)
+
+        "fib" => {
+            if parts.len() < 2 {
+                return "Usage: fib <number>".to_string();
+            }
+
+            match parts[1].parse::<u32>() {
+                Ok(n) if n <= 93 => {
+                    let result = fibonacci(n);
+                    format!("fibonacci({}) = {}", n, result)
+                }
+                Ok(_) => "Please enter a number between 0 and 93".to_string(),
+                Err(_) => "Usage: fib <number>".to_string(),
+            }
+        }
+
+        // Add more commands here!
+
+        _ => format!("Command not found: {}\nType 'help' for available commands.", command)
     }
 }
 
-/// Example: Calculate fibonacci (demonstrating performance)
-#[wasm_bindgen]
-pub fn fibonacci(n: u32) -> u64 {
+/// Calculate fibonacci number (helper function)
+fn fibonacci(n: u32) -> u64 {
     match n {
         0 => 0,
         1 => 1,

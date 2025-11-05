@@ -82,8 +82,7 @@
                 await wasmModule.default();
                 wasm = wasmModule;
                 wasmLoaded = true;
-                addOutput('WASM module loaded successfully!');
-                addOutput('Try: rust-hello, rust-info, or fib 10');
+                addOutput('Try: hello, info, or fib 10');
             } catch (err) {
                 console.error('Failed to load WASM:', err);
                 addOutput('Warning: WASM module not loaded. Rust commands unavailable.');
@@ -98,8 +97,11 @@
             input.focus();
         });
 
+        // Content commands that have .txt files
+        const contentCommands = ['help', 'about', 'contact'];
+
         // Handle commands
-        input.addEventListener('keydown', (e) => {
+        input.addEventListener('keydown', async (e) => {
             if (e.key === 'Enter') {
                 const command = input.value.trim();
 
@@ -109,36 +111,29 @@
                 // Process the command
                 if (command === '') {
                     // Do nothing for empty command
-                } else if (command === 'help') {
-                    addOutput('Available commands:');
-                    addOutput('  help       - Show this help message');
-                    addOutput('  about      - Learn more about this site');
-                    addOutput('  clear      - Clear the terminal');
-                    if (wasmLoaded) {
-                        addOutput('  rust-hello - Greeting from Rust/WASM');
-                        addOutput('  rust-info  - Info about the WASM module');
-                        addOutput('  fib N      - Calculate Nth fibonacci number (Rust)');
-                    }
-                } else if (command === 'about') {
-                    addOutput('This is a minimal terminal-style website.');
-                    addOutput('Powered by Rust + WebAssembly + vanilla JS.');
                 } else if (command === 'clear') {
                     output.innerHTML = '';
-                } else if (wasmLoaded && command.startsWith('fib ')) {
-                    const n = parseInt(command.substring(4));
-                    if (isNaN(n)) {
-                        addOutput('Usage: fib <number>');
-                    } else if (n < 0 || n > 93) {
-                        addOutput('Please enter a number between 0 and 93');
-                    } else {
-                        const result = wasm.fibonacci(n);
-                        addOutput(`fibonacci(${n}) = ${result}`);
+                } else if (contentCommands.includes(command)) {
+                    // Fetch content from file
+                    try {
+                        const response = await fetch(`content/${command}.txt`);
+                        if (response.ok) {
+                            const content = await response.text();
+                            content.split('\n').forEach(line => addOutput(line));
+                        } else {
+                            addOutput(`Error loading ${command} content`);
+                        }
+                    } catch (err) {
+                        addOutput(`Error: ${err.message}`);
                     }
-                } else if (wasmLoaded && (command === 'rust-hello' || command === 'rust-info')) {
+                } else if (wasmLoaded) {
+                    // Pass to WASM for processing
                     const result = wasm.process_command(command);
-                    addOutput(result);
+                    if (result) {
+                        result.split('\n').forEach(line => addOutput(line));
+                    }
                 } else {
-                    addOutput(`Command not found: ${command}`);
+                    addOutput('WASM not loaded. Only content commands available.');
                     addOutput(`Type 'help' for available commands.`);
                 }
 

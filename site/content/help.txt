@@ -1,0 +1,12 @@
+Available commands:
+  help     - Show this help message
+  about    - About me
+  contact  - Contact information
+  clear    - Clear the terminal
+
+WASM commands:
+  hello    - Greeting from Rust
+  info     - WASM module info
+  fib N    - Calculate Nth fibonacci number
+
+Type any command to get started!
