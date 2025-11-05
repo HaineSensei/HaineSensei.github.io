@@ -14,3 +14,6 @@ opt-level = "z"     # Optimize for size
 lto = true          # Enable link-time optimization
 codegen-units = 1   # Better optimization
 strip = true        # Strip symbols
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false    # Disable wasm-opt (causes issues with bulk memory)
