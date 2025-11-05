@@ -37,6 +37,13 @@ pub fn process_command(command: &str) -> String {
             }
         }
 
+        "secret" => {
+            if parts.len() < 2 {
+                return "You found my secret hideout, good luck getting in though.".to_string()
+            }
+            "You will never find my true secrets!".to_string()
+        }
+
         // Add more commands here!
 
         _ => format!("Command not found: {}\nType 'help' for available commands.", command)
