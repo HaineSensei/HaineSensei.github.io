@@ -6,10 +6,11 @@ Content:
   contact  - Contact information
 
 Filesystem:
-  ls       - List files and directories
-  cd DIR   - Change directory (supports . .. / and relative paths)
-  pwd      - Print working directory
-  cat FILE - Display file contents (supports relative and absolute paths)
+  ls          - List files and directories
+  cd DIR      - Change directory (supports . .. / and relative paths)
+  pwd         - Print working directory
+  cat FILE    - Display file contents (supports relative and absolute paths)
+  pretty FILE - Render markdown with LaTeX support in new tab
 
 Other:
   clear    - Clear the terminal
