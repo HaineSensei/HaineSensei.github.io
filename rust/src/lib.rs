@@ -264,6 +264,20 @@ fn dir_exists(path: &DirPath) -> bool {
     })
 }
 
+// Helper to open pretty page in new tab
+fn open_pretty_page(file_path: &str, path_arg: &str) -> String {
+    let url = format!("./pretty.html?content={}", file_path);
+
+    if let Some(window) = web_sys::window() {
+        match window.open_with_url_and_target(&url, "_blank") {
+            Ok(_) => format!("Opening {} in new tab...", path_arg),
+            Err(_) => "Error: Failed to open new tab. Please check your browser's popup settings.".to_string()
+        }
+    } else {
+        "Error: Could not access window object".to_string()
+    }
+}
+
 // List files and directories in current directory
 fn list_directory(path: &DirPath) -> Vec<String> {
     let path_str = path.to_string();
@@ -489,6 +503,49 @@ pub async fn process_command(command: &str) -> String {
                 return "You found my secret hideout, good luck getting in though.".to_string()
             }
             "You will never find my true secrets!".to_string()
+        }
+
+        "pretty" => {
+            if parts.len() < 2 {
+                return "Usage: pretty <filename>".to_string();
+            }
+
+            let path_arg = parts[1];
+            let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
+
+            // Check if file exists
+            if !filepath.exists() {
+                return format!("pretty: {}: No such file", path_arg);
+            }
+
+            // Check if it's a .md file
+            let is_markdown = filepath.file.ends_with(".md");
+
+            if is_markdown {
+                // Open directly
+                open_pretty_page(&filepath.to_string(), path_arg)
+            } else {
+                // Ask for confirmation
+                format!("::AWAIT_INPUT::\nprompt: Warning: '{}' is not a markdown file. Render anyway? (y/n)\ncallback: __pretty_confirm__ {{input}} {} {}\n::END::",
+                    path_arg, filepath.to_string(), path_arg)
+            }
+        }
+
+        // Internal callback commands (prefixed with __)
+        "__pretty_confirm__" => {
+            if parts.len() < 4 {
+                return "Error: Invalid callback".to_string();
+            }
+
+            let user_response = parts[1].to_lowercase();
+            let file_path = parts[2];
+            let path_arg = parts[3];
+
+            if user_response == "y" || user_response == "yes" {
+                open_pretty_page(file_path, path_arg) 
+            } else {
+                "Cancelled.".to_string()
+            }
         }
 
         // Add more commands here!

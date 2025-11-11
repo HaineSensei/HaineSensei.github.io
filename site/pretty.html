@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pretty View</title>
+
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+
+    <!-- highlight.js CSS - dark theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css" id="hljs-dark" disabled>
+
+    <!-- highlight.js CSS - light theme -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" id="hljs-light" disabled>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        /* Terminal theme (default) */
+        body.theme-terminal {
+            background-color: #0a0a0a;
+            color: #00ff00;
+        }
+
+        body.theme-terminal code {
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+
+        body.theme-terminal pre {
+            background: #1a1a1a;
+            border: 1px solid #00ff00;
+        }
+
+        body.theme-terminal a {
+            color: #00ff00;
+        }
+
+        body.theme-terminal .theme-toggle button {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+        }
+
+        body.theme-terminal .theme-toggle button.active {
+            background: #00ff00;
+            color: #0a0a0a;
+        }
+
+        /* Terminal mode: disable colorful syntax highlighting, use monochrome green */
+        body.theme-terminal .hljs {
+            background: #1a1a1a !important;
+            color: #00ff00 !important;
+        }
+
+        body.theme-terminal .hljs-keyword,
+        body.theme-terminal .hljs-selector-tag,
+        body.theme-terminal .hljs-literal,
+        body.theme-terminal .hljs-section,
+        body.theme-terminal .hljs-link,
+        body.theme-terminal .hljs-subst,
+        body.theme-terminal .hljs-string,
+        body.theme-terminal .hljs-title,
+        body.theme-terminal .hljs-name,
+        body.theme-terminal .hljs-type,
+        body.theme-terminal .hljs-attribute,
+        body.theme-terminal .hljs-symbol,
+        body.theme-terminal .hljs-bullet,
+        body.theme-terminal .hljs-built_in,
+        body.theme-terminal .hljs-addition,
+        body.theme-terminal .hljs-variable,
+        body.theme-terminal .hljs-template-tag,
+        body.theme-terminal .hljs-template-variable,
+        body.theme-terminal .hljs-comment,
+        body.theme-terminal .hljs-quote,
+        body.theme-terminal .hljs-deletion,
+        body.theme-terminal .hljs-meta,
+        body.theme-terminal .hljs-number {
+            color: #00ff00 !important;
+        }
+
+        /* Dark theme */
+        body.theme-dark {
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+        }
+
+        body.theme-dark code {
+            background: #2a2a2a;
+            color: #f0f0f0;
+        }
+
+        body.theme-dark pre {
+            background: #2a2a2a;
+            border: 1px solid #444;
+        }
+
+        body.theme-dark a {
+            color: #58a6ff;
+        }
+
+        body.theme-dark .theme-toggle button {
+            background: #2a2a2a;
+            color: #e0e0e0;
+            border: 1px solid #444;
+        }
+
+        body.theme-dark .theme-toggle button.active {
+            background: #58a6ff;
+            color: #1a1a1a;
+        }
+
+        /* Light theme */
+        body.theme-light {
+            background-color: #ffffff;
+            color: #24292e;
+        }
+
+        body.theme-light code {
+            background: #f6f8fa;
+            color: #24292e;
+        }
+
+        body.theme-light pre {
+            background: #f6f8fa;
+            border: 1px solid #d0d7de;
+        }
+
+        body.theme-light a {
+            color: #0969da;
+        }
+
+        body.theme-light .theme-toggle button {
+            background: #f6f8fa;
+            color: #24292e;
+            border: 1px solid #d0d7de;
+        }
+
+        body.theme-light .theme-toggle button.active {
+            background: #0969da;
+            color: #ffffff;
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .theme-toggle button {
+            padding: 8px 16px;
+            cursor: pointer;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .theme-toggle button:hover {
+            opacity: 0.8;
+        }
+
+        #content {
+            max-width: 800px;
+            margin: 60px auto 0 auto;
+        }
+
+        #error {
+            max-width: 800px;
+            margin: 60px auto 0 auto;
+            padding: 20px;
+            border: 1px solid #ff0000;
+            color: #ff0000;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Markdown styling */
+        h1, h2, h3, h4, h5, h6 {
+            margin-top: 24px;
+            margin-bottom: 16px;
+            font-weight: 600;
+            line-height: 1.25;
+        }
+
+        h1 { font-size: 2em; border-bottom: 1px solid; padding-bottom: 0.3em; }
+        h2 { font-size: 1.5em; border-bottom: 1px solid; padding-bottom: 0.3em; }
+        h3 { font-size: 1.25em; }
+        h4 { font-size: 1em; }
+        h5 { font-size: 0.875em; }
+        h6 { font-size: 0.85em; }
+
+        p {
+            margin-bottom: 16px;
+        }
+
+        code {
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            border-radius: 3px;
+            font-family: 'Courier New', Monaco, Consolas, monospace;
+        }
+
+        pre {
+            padding: 16px;
+            overflow: auto;
+            font-size: 85%;
+            line-height: 1.45;
+            border-radius: 3px;
+            margin-bottom: 16px;
+            font-weight: 600; /* Semi-bold */
+        }
+
+        pre code {
+            background: transparent;
+            border: 0;
+            padding: 0;
+            margin: 0;
+            font-weight: 600; /* Semi-bold */
+        }
+
+        blockquote {
+            padding: 0 1em;
+            border-left: 0.25em solid;
+            margin-bottom: 16px;
+        }
+
+        ul, ol {
+            padding-left: 2em;
+            margin-bottom: 16px;
+        }
+
+        li {
+            margin-bottom: 0.25em;
+        }
+
+        table {
+            border-collapse: collapse;
+            margin-bottom: 16px;
+            width: 100%;
+        }
+
+        th, td {
+            padding: 6px 13px;
+            border: 1px solid;
+        }
+
+        th {
+            font-weight: 600;
+        }
+
+        hr {
+            height: 0.25em;
+            padding: 0;
+            margin: 24px 0;
+            border: 0;
+            border-bottom: 1px solid;
+        }
+
+        a {
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        img {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body class="theme-terminal">
+    <div class="theme-toggle">
+        <button onclick="setTheme('terminal')" class="active" id="btn-terminal">Terminal</button>
+        <button onclick="setTheme('dark')" id="btn-dark">Dark</button>
+        <button onclick="setTheme('light')" id="btn-light">Light</button>
+    </div>
+
+    <div id="content"></div>
+    <div id="error" style="display: none;"></div>
+
+    <!-- KaTeX JS -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+
+    <!-- highlight.js for syntax highlighting -->
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+    <!-- markdown-it JS -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it@14.0.0/dist/markdown-it.min.js"></script>
+
+    <!-- markdown-it-texmath for LaTeX support -->
+    <script src="https://cdn.jsdelivr.net/npm/markdown-it-texmath@1.0.0/texmath.min.js"></script>
+
+    <script>
+        // Theme management
+        function setTheme(theme) {
+            const body = document.body;
+            body.className = `theme-${theme}`;
+
+            // Update active button
+            document.querySelectorAll('.theme-toggle button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`btn-${theme}`).classList.add('active');
+
+            // Switch highlight.js theme based on selected theme
+            const hljsDark = document.getElementById('hljs-dark');
+            const hljsLight = document.getElementById('hljs-light');
+
+            if (theme === 'light') {
+                hljsDark.disabled = true;
+                hljsLight.disabled = false;
+            } else {
+                // Both terminal and dark use dark syntax highlighting
+                // (terminal mode overrides colors with CSS)
+                hljsDark.disabled = false;
+                hljsLight.disabled = true;
+            }
+
+            // Save to localStorage
+            localStorage.setItem('prettyTheme', theme);
+        }
+
+        // Load saved theme or default to terminal
+        const savedTheme = localStorage.getItem('prettyTheme') || 'terminal';
+        setTheme(savedTheme);
+
+        // Get file path from query parameter
+        const params = new URLSearchParams(window.location.search);
+        const filePath = params.get('content');
+
+        if (!filePath) {
+            showError('No file specified in URL');
+        } else {
+            loadAndRenderMarkdown(filePath);
+        }
+
+        async function loadAndRenderMarkdown(filePath) {
+            try {
+                // Convert virtual path to actual content path
+                // filePath is like "/about.txt" or "/blog/post.md"
+                const contentPath = filePath.startsWith('/')
+                    ? `./content${filePath}`
+                    : `./content/${filePath}`;
+
+                const response = await fetch(contentPath);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const markdown = await response.text();
+
+                // Initialize markdown-it with syntax highlighting and texmath plugin
+                const md = window.markdownit({
+                    html: true,
+                    linkify: true,
+                    typographer: true,
+                    highlight: function (str, lang) {
+                        if (lang && hljs.getLanguage(lang)) {
+                            try {
+                                return hljs.highlight(str, { language: lang }).value;
+                            } catch (__) {}
+                        }
+                        return ''; // Use default escaping
+                    }
+                }).use(window.texmath, {
+                    engine: katex,
+                    delimiters: 'dollars', // Use $$...$$ for display math, $...$ for inline
+                    katexOptions: { macros: {"\\RR": "\\mathbb{R}"} }
+                });
+
+                // Render markdown
+                const html = md.render(markdown);
+
+                // Display rendered content
+                document.getElementById('content').innerHTML = html;
+            } catch (error) {
+                showError(`Failed to load file: ${error.message}`);
+            }
+        }
+
+        function showError(message) {
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            document.getElementById('content').style.display = 'none';
+        }
+    </script>
+</body>
+</html>

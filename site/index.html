@@ -77,6 +77,13 @@
         let wasm = null;
         let wasmLoaded = false;
 
+        // Input-awaiting state machine
+        let inputState = {
+            mode: 'normal', // 'normal' or 'awaiting'
+            prompt: '',
+            callback: ''
+        };
+
         async function initWasm() {
             try {
                 const wasmModule = await import('./pkg/terminal_wasm.js');
@@ -105,33 +112,67 @@
         // Handle commands
         input.addEventListener('keydown', async (e) => {
             if (e.key === 'Enter') {
-                const command = input.value.trim();
+                const userInput = input.value.trim();
 
-                // Display the command
-                addOutput(`> ${command}`);
+                // Display the input
+                addOutput(`> ${userInput}`);
 
-                // Process the command
-                if (command === '') {
-                    // Do nothing for empty command
-                } else if (command === 'clear') {
-                    output.innerHTML = '';
-                } else if (wasmLoaded) {
-                    // Pass to WASM for processing (now async)
-                    try {
-                        const result = await wasm.process_command(command);
-                        if (result) {
-                            result.split('\n').forEach(line => addOutput(line));
+                // Process based on current state
+                if (inputState.mode === 'awaiting') {
+                    // Handle awaiting input mode
+                    const callback = inputState.callback.replace('{input}', userInput);
+
+                    // Reset to normal mode (might be set back to awaiting if callback returns another AWAIT_INPUT)
+                    inputState.mode = 'normal';
+                    inputState.prompt = '';
+                    inputState.callback = '';
+
+                    // Process callback command
+                    if (wasmLoaded) {
+                        try {
+                            const result = await wasm.process_command(callback);
+                            if (result) {
+                                // Check if callback result is also an AWAIT_INPUT response
+                                if (result.startsWith('::AWAIT_INPUT::')) {
+                                    handleAwaitInput(result);
+                                } else {
+                                    result.split('\n').forEach(line => addOutput(line));
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Callback error:', err);
+                            addOutput(`Error: ${err}`);
                         }
-                    } catch (err) {
-                        console.error('Command error:', err);
-                        addOutput(`Error: ${err}`);
                     }
                 } else {
-                    addOutput('Terminal not ready. Please wait...');
+                    // Normal command processing
+                    if (userInput === '') {
+                        // Do nothing for empty command
+                    } else if (userInput === 'clear') {
+                        output.innerHTML = '';
+                    } else if (wasmLoaded) {
+                        // Pass to WASM for processing
+                        try {
+                            const result = await wasm.process_command(userInput);
+                            if (result) {
+                                // Check if result is an AWAIT_INPUT response
+                                if (result.startsWith('::AWAIT_INPUT::')) {
+                                    handleAwaitInput(result);
+                                } else {
+                                    result.split('\n').forEach(line => addOutput(line));
+                                }
+                            }
+                        } catch (err) {
+                            console.error('Command error:', err);
+                            addOutput(`Error: ${err}`);
+                        }
+                    } else {
+                        addOutput('Terminal not ready. Please wait...');
+                    }
                 }
 
-                // Add blank line after output
-                if (command !== 'clear') {
+                // Add blank line after output (except for clear)
+                if (userInput !== 'clear') {
                     addOutput('&nbsp;');
                 }
 
@@ -142,6 +183,29 @@
                 window.scrollTo(0, document.body.scrollHeight);
             }
         });
+
+        // Handle ::AWAIT_INPUT:: responses
+        function handleAwaitInput(response) {
+            const lines = response.split('\n');
+            let prompt = '';
+            let callback = '';
+
+            for (const line of lines) {
+                if (line.startsWith('prompt: ')) {
+                    prompt = line.substring(8);
+                } else if (line.startsWith('callback: ')) {
+                    callback = line.substring(10);
+                }
+            }
+
+            // Display the prompt
+            addOutput(prompt);
+
+            // Set state to awaiting
+            inputState.mode = 'awaiting';
+            inputState.prompt = prompt;
+            inputState.callback = callback;
+        }
 
         function addOutput(text) {
             const line = document.createElement('div');
