@@ -1,22 +1,22 @@
 Available commands:
 
-Content:
-  help     - Show this help message
-  about    - About me
-  contact  - Contact information
+Content:  
+  help     - Show this help message  
+  about    - About me  
+  contact  - Contact information  
 
-Filesystem:
-  ls          - List files and directories
-  cd DIR      - Change directory (supports . .. / and relative paths)
-  pwd         - Print working directory
-  cat FILE    - Display file contents (supports relative and absolute paths)
-  pretty FILE - Render markdown with LaTeX support in new tab
+Filesystem:  
+  ls          - List files and directories  
+  cd DIR      - Change directory (supports . .. / and relative paths)  
+  pwd         - Print working directory  
+  cat FILE    - Display file contents (supports relative and absolute paths)  
+  pretty FILE - Render markdown with LaTeX support in new tab  
 
-Other:
-  clear    - Clear the terminal
-  hello    - Greeting from Rust
-  info     - WASM module info
-  fib N    - Calculate Nth fibonacci number
+Other:  
+  clear    - Clear the terminal  
+  hello    - Greeting from Rust  
+  info     - WASM module info  
+  fib N    - Calculate Nth fibonacci number  
 
 Note: This is a minimal filesystem for navigating content, not a full Unix shell.
 No plans to add many more commands - just enough to explore the site.

@@ -1,5 +1,5 @@
-About Me
---------
+About
+-----
 
 This is a terminal-style website built with:
 - Rust + WebAssembly
