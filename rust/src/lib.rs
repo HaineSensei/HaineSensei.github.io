@@ -3,11 +3,12 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use serde::Deserialize;
 
 thread_local! {
     static CURRENT_DIR: RefCell<DirPath> = RefCell::new(DirPath::root());
-    static MANIFEST: RefCell<Option<Manifest>> = RefCell::new(None);
+    static VIRTUAL_FS: RefCell<VirtualFilesystem> = RefCell::new(VirtualFilesystem::new());
 }
 
 #[derive(Deserialize, Clone)]
@@ -22,16 +23,175 @@ struct Manifest {
     directories: Vec<String>,
 }
 
+/// Content can either be in memory or needs to be fetched
 #[derive(Clone)]
+enum Content {
+    InMemory(String),
+    ToFetch,
+}
+
+/// Virtual filesystem stored in WASM memory
+struct VirtualFilesystem {
+    content: HashMap<DirPath, HashMap<String, Content>>,
+}
+
+impl VirtualFilesystem {
+    fn new() -> Self {
+        Self {
+            content: HashMap::new(),
+        }
+    }
+
+    /// Initialize from manifest - loads all static files as ToFetch
+    fn initialize_from_manifest(&mut self, manifest: &Manifest) {
+        // Add root directory
+        self.content.insert(DirPath::root(), HashMap::new());
+
+        // Add all directories from manifest
+        for dir_str in &manifest.directories {
+            let mut dir = DirPath::root();
+            for component in dir_str.split('/').filter(|s| !s.is_empty()) {
+                dir.cd(&NextDir::In(component.to_string()), true);
+            }
+            self.content.insert(dir, HashMap::new());
+        }
+
+        // Add all files from manifest as ToFetch
+        for file_entry in &manifest.files {
+            let mut dir = DirPath::root();
+            for component in file_entry.path.split('/').filter(|s| !s.is_empty()) {
+                dir.cd(&NextDir::In(component.to_string()), true);
+            }
+
+            self.content
+                .entry(dir)
+                .or_insert_with(HashMap::new)
+                .insert(file_entry.name.clone(), Content::ToFetch);
+        }
+    }
+
+    /// Write a file to the virtual filesystem (in memory)
+    fn write_file(&mut self, filepath: &FilePath, content: String) {
+        self.content
+            .entry(filepath.dir.clone())
+            .or_insert_with(HashMap::new)
+            .insert(filepath.file.clone(), Content::InMemory(content));
+    }
+
+    /// Get content type for a file
+    fn get_content(&self, filepath: &FilePath) -> Option<&Content> {
+        self.content.get(&filepath.dir)?.get(&filepath.file)
+    }
+
+    /// Check if a file exists in the virtual filesystem
+    fn file_exists(&self, filepath: &FilePath) -> bool {
+        self.content
+            .get(&filepath.dir)
+            .and_then(|files| files.get(&filepath.file))
+            .is_some()
+    }
+
+    /// Remove a file from the virtual filesystem
+    fn remove_file(&mut self, filepath: &FilePath) -> bool {
+        if let Some(files) = self.content.get_mut(&filepath.dir) {
+            files.remove(&filepath.file).is_some()
+        } else {
+            false
+        }
+    }
+
+    /// Create a directory
+    fn create_dir(&mut self, dirpath: DirPath) {
+        self.content.entry(dirpath).or_insert_with(HashMap::new);
+    }
+
+    /// Check if a directory exists
+    fn dir_exists(&self, dirpath: &DirPath) -> bool {
+        self.content.contains_key(dirpath)
+    }
+
+    /// Remove a directory (only if empty)
+    fn remove_dir(&mut self, dirpath: &DirPath) -> Result<(), String> {
+        // Check if directory has any files
+        if let Some(files) = self.content.get(dirpath) {
+            if !files.is_empty() {
+                return Err("Directory not empty".to_string());
+            }
+        } else {
+            return Err("Directory does not exist".to_string());
+        }
+
+        // Check if any subdirectories exist
+        for dir in self.content.keys() {
+            if dir.0.len() > dirpath.0.len() {
+                let mut is_subdir = true;
+                for (i, component) in dirpath.0.iter().enumerate() {
+                    if dir.0[i] != *component {
+                        is_subdir = false;
+                        break;
+                    }
+                }
+                if is_subdir {
+                    return Err("Directory not empty".to_string());
+                }
+            }
+        }
+
+        self.content.remove(dirpath);
+        Ok(())
+    }
+
+    /// List all files in a given directory (returns just filenames)
+    fn list_files_in_dir(&self, dirpath: &DirPath) -> Vec<String> {
+        if let Some(files) = self.content.get(dirpath) {
+            let mut filenames: Vec<String> = files.keys().cloned().collect();
+            filenames.sort();
+            filenames
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Get all immediate subdirectories of a given directory (returns just dir names)
+    fn list_subdirs_in_dir(&self, dirpath: &DirPath) -> Vec<String> {
+        let mut subdirs = std::collections::HashSet::new();
+
+        for dir in self.content.keys() {
+            // Check if this is an immediate subdirectory
+            if dir.0.len() == dirpath.0.len() + 1 {
+                let mut is_subdir = true;
+                for (i, component) in dirpath.0.iter().enumerate() {
+                    if dir.0[i] != *component {
+                        is_subdir = false;
+                        break;
+                    }
+                }
+
+                if is_subdir {
+                    if let NextDir::In(name) = &dir.0[dirpath.0.len()] {
+                        subdirs.insert(name.clone());
+                    }
+                }
+            }
+        }
+
+        let mut result: Vec<String> = subdirs.into_iter().collect();
+        result.sort();
+        result
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
 enum NextDir {
     In(String),
     Out
 }
 
 // DirPath([In("usr"),Out,In("Documents")]) interpreted as /usr/../Documents
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct DirPath(Vec<NextDir>);
 
+#[derive(Clone, PartialEq, Eq, Hash)]
 struct FilePath {
     dir: DirPath,
     file: String
@@ -103,21 +263,10 @@ impl FilePath {
         format!("./content/{}{}", path_component, self.file)
     }
 
-    // Check if this file exists in the manifest
+    // Check if this file exists in the virtual filesystem
     fn exists(&self) -> bool {
-        let path_str = self.dir.to_string();
-        let normalized = if path_str == "/" {
-            ""
-        } else {
-            path_str.trim_start_matches('/')
-        };
-
-        MANIFEST.with(|m| {
-            if let Some(ref manifest) = *m.borrow() {
-                manifest.files.iter().any(|f| f.path == normalized && f.name == self.file)
-            } else {
-                false
-            }
+        VIRTUAL_FS.with(|vfs| {
+            vfs.borrow().file_exists(self)
         })
     }
 }
@@ -222,7 +371,7 @@ async fn fetch_text(url: &str) -> Result<String, String> {
     text.as_string().ok_or_else(|| "Response text is not a string".to_string())
 }
 
-// Load manifest from server
+// Load manifest from server and initialize virtual filesystem
 #[wasm_bindgen]
 pub async fn load_manifest() -> Result<(), JsValue> {
     let manifest_text = fetch_text("./content/manifest.json")
@@ -232,11 +381,123 @@ pub async fn load_manifest() -> Result<(), JsValue> {
     let manifest: Manifest = serde_json::from_str(&manifest_text)
         .map_err(|e| JsValue::from_str(&format!("Failed to parse manifest: {}", e)))?;
 
-    MANIFEST.with(|m| {
-        *m.borrow_mut() = Some(manifest);
+    // Initialize virtual filesystem from manifest (manifest is then dropped)
+    VIRTUAL_FS.with(|vfs| {
+        vfs.borrow_mut().initialize_from_manifest(&manifest);
     });
 
     Ok(())
+}
+
+// Write a file to the virtual filesystem (called from JavaScript/editor)
+#[wasm_bindgen]
+pub fn write_file(path: &str, content: String) -> Result<(), JsValue> {
+    let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path, &cd.borrow()));
+
+    VIRTUAL_FS.with(|vfs| {
+        vfs.borrow_mut().write_file(&filepath, content);
+    });
+
+    Ok(())
+}
+
+// Read a file from the virtual filesystem (called from JavaScript)
+// Returns the content type: "InMemory:<content>", "ToFetch:<url>", or "NotFound"
+#[wasm_bindgen]
+pub fn read_file(path: &str) -> String {
+    let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path, &cd.borrow()));
+
+    VIRTUAL_FS.with(|vfs| {
+        match vfs.borrow().get_content(&filepath) {
+            Some(Content::InMemory(content)) => format!("InMemory:{}", content),
+            Some(Content::ToFetch) => format!("ToFetch:{}", filepath.to_url()),
+            None => "NotFound".to_string(),
+        }
+    })
+}
+
+// Export all in-memory files as JSON (called from JavaScript)
+#[wasm_bindgen]
+pub fn export_session() -> String {
+    use serde_json::json;
+
+    VIRTUAL_FS.with(|vfs| {
+        let vfs_ref = vfs.borrow();
+        let mut files = serde_json::Map::new();
+
+        // Collect all InMemory files
+        for (dirpath, dir_contents) in &vfs_ref.content {
+            for (filename, content) in dir_contents {
+                if let Content::InMemory(file_content) = content {
+                    let mut path_parts = Vec::new();
+                    for component in &dirpath.0 {
+                        match component {
+                            NextDir::In(name) => path_parts.push(name.clone()),
+                            NextDir::Out => path_parts.push("..".to_string()),
+                        }
+                    }
+
+                    let full_path = if path_parts.is_empty() {
+                        format!("/{}", filename)
+                    } else {
+                        format!("/{}/{}", path_parts.join("/"), filename)
+                    };
+
+                    files.insert(full_path, json!(file_content));
+                }
+            }
+        }
+
+        json!({
+            "version": "1.0",
+            "files": files
+        }).to_string()
+    })
+}
+
+// Import session from JSON (called from JavaScript)
+// Returns number of files imported, or error message prefixed with "Error:"
+#[wasm_bindgen]
+pub fn import_session(session_json: String) -> String {
+    use serde_json::Value;
+
+    match serde_json::from_str::<Value>(&session_json) {
+        Ok(session) => {
+            // Check version
+            if let Some(version) = session.get("version").and_then(|v| v.as_str()) {
+                if version != "1.0" {
+                    return format!("Error: Unsupported session version: {}", version);
+                }
+            } else {
+                return "Error: Invalid session file: missing version".to_string();
+            }
+
+            // Get files object
+            let files = match session.get("files").and_then(|f| f.as_object()) {
+                Some(f) => f,
+                None => return "Error: Invalid session file: missing or invalid files".to_string(),
+            };
+
+            let mut count = 0;
+
+            // Import each file
+            VIRTUAL_FS.with(|vfs| {
+                for (path, content_value) in files {
+                    if let Some(content_str) = content_value.as_str() {
+                        // Parse the path
+                        let filepath = FilePath::parse(path, &DirPath::root());
+
+                        // Write to virtual filesystem
+                        vfs.borrow_mut().write_file(&filepath, content_str.to_string());
+                        count += 1;
+                    }
+                }
+            });
+
+            format!("Imported {} file(s)", count)
+        }
+        Err(e) => format!("Error: Failed to parse session file: {}", e),
+    }
 }
 
 // Helper to get current directory path as string
@@ -244,23 +505,10 @@ fn get_current_dir_string() -> String {
     CURRENT_DIR.with(|cd| cd.borrow().to_string())
 }
 
-// Helper to check if a directory exists in manifest
+// Helper to check if a directory exists in virtual filesystem
 fn dir_exists(path: &DirPath) -> bool {
-    let path_str = path.to_string();
-
-    if path_str == "/" {
-        return true; // Root always exists
-    }
-
-    // Remove leading slash for comparison
-    let normalized = path_str.trim_start_matches('/');
-
-    MANIFEST.with(|m| {
-        if let Some(ref manifest) = *m.borrow() {
-            manifest.directories.iter().any(|d| d == normalized)
-        } else {
-            false
-        }
+    VIRTUAL_FS.with(|vfs| {
+        vfs.borrow().dir_exists(path)
     })
 }
 
@@ -280,48 +528,21 @@ fn open_pretty_page(file_path: &str, path_arg: &str) -> String {
 
 // List files and directories in current directory
 fn list_directory(path: &DirPath) -> Vec<String> {
-    let path_str = path.to_string();
-    let normalized = if path_str == "/" {
-        ""
-    } else {
-        path_str.trim_start_matches('/')
-    };
+    VIRTUAL_FS.with(|vfs| {
+        let vfs_ref = vfs.borrow();
+        let mut entries = Vec::new();
 
-    MANIFEST.with(|m| {
-        if let Some(ref manifest) = *m.borrow() {
-            let mut entries = Vec::new();
-
-            // Add subdirectories
-            for dir in &manifest.directories {
-                if normalized.is_empty() {
-                    // At root - show top-level directories only
-                    if !dir.contains('/') {
-                        entries.push(format!("{}/", dir));
-                    }
-                } else {
-                    // Show direct children only
-                    if dir.starts_with(normalized) && dir != normalized {
-                        let remainder = dir[normalized.len()..].trim_start_matches('/');
-                        if !remainder.contains('/') {
-                            entries.push(format!("{}/", remainder));
-                        }
-                    }
-                }
-            }
-
-            // Add files in current directory
-            for file in &manifest.files {
-                if file.path == normalized {
-                    entries.push(file.name.clone());
-                }
-            }
-
-            entries.sort();
-            entries.dedup();
-            entries
-        } else {
-            vec![]
+        // Add subdirectories with trailing /
+        let subdirs = vfs_ref.list_subdirs_in_dir(path);
+        for subdir in subdirs {
+            entries.push(format!("{}/", subdir));
         }
+
+        // Add files
+        entries.extend(vfs_ref.list_files_in_dir(path));
+
+        entries.sort();
+        entries
     })
 }
 
@@ -336,8 +557,28 @@ pub async fn process_command(command: &str) -> String {
     }
 
     match parts[0] {
-        // Legacy content commands - redirect to cat
-        "help" | "about" | "contact" => {
+        // Help command with optional -v flag
+        "help" => {
+            let filename = if parts.len() > 1 && parts[1] == "-v" {
+                "help-verbose.txt".to_string()
+            } else {
+                "help.txt".to_string()
+            };
+
+            let filepath = FilePath::new(DirPath::root(), filename.clone());
+
+            if filepath.exists() {
+                match fetch_text(&filepath.to_url()).await {
+                    Ok(content) => content,
+                    Err(e) => format!("Error loading {}: {}", filename, e),
+                }
+            } else {
+                format!("File not found: {}", filename)
+            }
+        }
+
+        // Other content commands
+        "about" | "contact" => {
             let filename = format!("{}.txt", parts[0]);
             let filepath = FilePath::new(DirPath::root(), filename.clone());
 
@@ -460,15 +701,21 @@ pub async fn process_command(command: &str) -> String {
             // Parse the path (supports both "file.txt" and "path/to/file.txt")
             let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
-            // Check if file exists
-            if !filepath.exists() {
-                return format!("cat: {}: No such file", path_arg);
-            }
+            // Check if file exists and get content type
+            let content_type = VIRTUAL_FS.with(|vfs| {
+                vfs.borrow().get_content(&filepath).cloned()
+            });
 
-            // Fetch file content
-            match fetch_text(&filepath.to_url()).await {
-                Ok(content) => content,
-                Err(e) => format!("cat: Failed to read {}: {}", path_arg, e),
+            match content_type {
+                Some(Content::InMemory(content)) => content,
+                Some(Content::ToFetch) => {
+                    // Fetch file content from server
+                    match fetch_text(&filepath.to_url()).await {
+                        Ok(content) => content,
+                        Err(e) => format!("cat: Failed to read {}: {}", path_arg, e),
+                    }
+                }
+                None => format!("cat: {}: No such file", path_arg),
             }
         }
 
@@ -503,6 +750,174 @@ pub async fn process_command(command: &str) -> String {
                 return "You found my secret hideout, good luck getting in though.".to_string()
             }
             "You will never find my true secrets!".to_string()
+        }
+
+        "echo" => {
+            if parts.len() < 2 {
+                return String::new();
+            }
+            // Join all parts after 'echo' with spaces
+            parts[1..].join(" ")
+        }
+
+        "edit" => {
+            if parts.len() < 2 {
+                return "Usage: edit <filename>".to_string();
+            }
+
+            let path_arg = parts[1];
+            let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
+
+            // Open editor for this file (create new or edit existing)
+            let url = format!("./editor.html?file={}", filepath.to_string());
+
+            if let Some(window) = web_sys::window() {
+                match window.open_with_url_and_target(&url, "_blank") {
+                    Ok(_) => format!("Opening editor for {}...", path_arg),
+                    Err(_) => "Error: Failed to open editor. Please check your browser's popup settings.".to_string()
+                }
+            } else {
+                "Error: Could not access window object".to_string()
+            }
+        }
+
+        "load" => {
+            if parts.len() < 2 {
+                return "Usage: load <filename>\n\nOpens a file picker to load a file from your device into the virtual filesystem.".to_string();
+            }
+
+            let target_filename = parts[1];
+
+            // Return a special marker that tells JavaScript to trigger file picker
+            // Format: ::FILE_PICKER::<acceptable_extensions> <filename>
+            format!("::FILE_PICKER::.kh,.txt,.md {}", target_filename)
+        }
+
+        "save" => {
+            if parts.len() < 2 {
+                return "Usage: save <filename>\n\nDownloads a file from the virtual filesystem to your device.".to_string();
+            }
+
+            let path_arg = parts[1];
+            let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
+
+            // Return special marker to tell JavaScript to trigger file download
+            // Format: ::FILE_DOWNLOAD::<filepath>
+            format!("::FILE_DOWNLOAD::{}", filepath.to_string())
+        }
+
+        "save-session" => {
+            // Return special marker to tell JavaScript to export session
+            "::SAVE_SESSION::".to_string()
+        }
+
+        "load-session" => {
+            // Return special marker to tell JavaScript to trigger file picker for session
+            "::LOAD_SESSION::".to_string()
+        }
+
+        "rm" => {
+            if parts.len() < 2 {
+                return "Usage: rm <filename>".to_string();
+            }
+
+            let path_arg = parts[1];
+            let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
+
+            VIRTUAL_FS.with(|vfs| {
+                if vfs.borrow_mut().remove_file(&filepath) {
+                    String::new()
+                } else {
+                    format!("rm: {}: No such file", path_arg)
+                }
+            })
+        }
+
+        "mkdir" => {
+            if parts.len() < 2 {
+                return "Usage: mkdir <directory>".to_string();
+            }
+
+            let dir_arg = parts[1];
+
+            // Parse directory path
+            let new_path = if dir_arg.starts_with('/') {
+                // Absolute path
+                let mut path = DirPath::root();
+                for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
+                    match component {
+                        "." => {},
+                        ".." => path.cd(&NextDir::Out, true),
+                        name => path.cd(&NextDir::In(name.to_string()), true),
+                    }
+                }
+                path
+            } else {
+                // Relative path
+                CURRENT_DIR.with(|cd| {
+                    let mut path = cd.borrow().clone();
+                    for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
+                        match component {
+                            "." => {},
+                            ".." => path.cd(&NextDir::Out, true),
+                            name => path.cd(&NextDir::In(name.to_string()), true),
+                        }
+                    }
+                    path
+                })
+            };
+
+            VIRTUAL_FS.with(|vfs| {
+                let mut vfs_mut = vfs.borrow_mut();
+                if vfs_mut.dir_exists(&new_path) {
+                    format!("mkdir: {}: Directory already exists", dir_arg)
+                } else {
+                    vfs_mut.create_dir(new_path);
+                    String::new()
+                }
+            })
+        }
+
+        "rmdir" => {
+            if parts.len() < 2 {
+                return "Usage: rmdir <directory>".to_string();
+            }
+
+            let dir_arg = parts[1];
+
+            // Parse directory path
+            let target_path = if dir_arg.starts_with('/') {
+                // Absolute path
+                let mut path = DirPath::root();
+                for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
+                    match component {
+                        "." => {},
+                        ".." => path.cd(&NextDir::Out, true),
+                        name => path.cd(&NextDir::In(name.to_string()), true),
+                    }
+                }
+                path
+            } else {
+                // Relative path
+                CURRENT_DIR.with(|cd| {
+                    let mut path = cd.borrow().clone();
+                    for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
+                        match component {
+                            "." => {},
+                            ".." => path.cd(&NextDir::Out, true),
+                            name => path.cd(&NextDir::In(name.to_string()), true),
+                        }
+                    }
+                    path
+                })
+            };
+
+            VIRTUAL_FS.with(|vfs| {
+                match vfs.borrow_mut().remove_dir(&target_path) {
+                    Ok(_) => String::new(),
+                    Err(e) => format!("rmdir: {}: {}", dir_arg, e),
+                }
+            })
         }
 
         "pretty" => {

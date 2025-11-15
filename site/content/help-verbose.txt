@@ -1,0 +1,41 @@
+Available commands:  
+
+Navigation:  
+  ls [DIR]       - List files and directories (in current or specified directory)  
+  cd DIR         - Change directory (supports . .. / and relative/absolute paths)  
+  pwd            - Print working directory  
+  cat FILE       - Display file contents (supports relative and absolute paths)  
+
+Content:  
+  help [-v]      - Show a help message (-v for verbose)  
+  about          - About this site  
+  contact        - Contact information  
+  pretty FILE    - Render markdown with LaTeX support in new tab  
+
+File Operations:  
+  edit FILE      - Edit or create a file (opens in new tab)  
+  save FILE      - Download a file from virtual filesystem to your device  
+  load FILE      - Upload a file from your device into virtual filesystem  
+  rm FILE        - Remove a file  
+  mkdir DIR      - Create a directory  
+  rmdir DIR      - Remove an empty directory  
+
+Session Management:  
+  save-session   - Export all in-memory files as JSON (downloads with timestamp)  
+  load-session   - Import a previously saved session file  
+
+Other:  
+  clear          - Clear the terminal  
+  hello          - Greeting from Rust/WASM  
+  info           - WASM module info  
+  fib N          - Calculate Nth fibonacci number  
+
+Notes:  
+- This is a minimal filesystem for navigating content, not a full Unix shell
+- Files created/edited with 'edit' are stored in browser memory until saved
+- Use save-session/load-session to preserve your work across page reloads
+- Static content files can be viewed but not modified
+- File extensions: .kh (scripts), .txt (text), .md (markdown)
+  - (scripts currently unimplemented)
+
+Type any command to get started!

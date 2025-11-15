@@ -345,13 +345,36 @@
         const params = new URLSearchParams(window.location.search);
         const filePath = params.get('content');
 
+        // BroadcastChannel for communication with terminal
+        const channel = new BroadcastChannel('pretty_channel');
+
+        // Listen for file content responses from terminal
+        channel.onmessage = (event) => {
+            const { action, filename, content } = event.data;
+
+            if (action === 'file_content' && filename === filePath) {
+                renderMarkdown(content);
+            }
+        };
+
         if (!filePath) {
             showError('No file specified in URL');
         } else {
-            loadAndRenderMarkdown(filePath);
+            // Request file content from terminal
+            channel.postMessage({
+                action: 'request_file',
+                filename: filePath
+            });
+
+            // Fallback: try to fetch from server after 1 second if no response
+            setTimeout(() => {
+                if (document.getElementById('content').innerHTML === '') {
+                    loadAndRenderMarkdownFromServer(filePath);
+                }
+            }, 1000);
         }
 
-        async function loadAndRenderMarkdown(filePath) {
+        async function loadAndRenderMarkdownFromServer(filePath) {
             try {
                 // Convert virtual path to actual content path
                 // filePath is like "/about.txt" or "/blog/post.md"
@@ -366,7 +389,14 @@
                 }
 
                 const markdown = await response.text();
+                renderMarkdown(markdown);
+            } catch (error) {
+                showError(`Failed to load file: ${error.message}`);
+            }
+        }
 
+        function renderMarkdown(markdown) {
+            try {
                 // Initialize markdown-it with syntax highlighting and texmath plugin
                 const md = window.markdownit({
                     html: true,
@@ -392,7 +422,7 @@
                 // Display rendered content
                 document.getElementById('content').innerHTML = html;
             } catch (error) {
-                showError(`Failed to load file: ${error.message}`);
+                showError(`Failed to render markdown: ${error.message}`);
             }
         }
 

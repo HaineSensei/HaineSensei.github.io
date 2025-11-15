@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        #header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #00ff00;
+        }
+
+        #filename {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        #controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            background-color: #003300;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 16px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #004400;
+        }
+
+        button:active {
+            background-color: #005500;
+        }
+
+        #editor {
+            flex: 1;
+            background-color: #0a0a0a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 16px;
+            resize: none;
+            outline: none;
+            line-height: 1.6;
+        }
+
+        #editor::selection {
+            background: #00ff0040;
+        }
+
+        #status {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #00ff00;
+            min-height: 20px;
+            font-size: 14px;
+        }
+
+        .error {
+            color: #ff0000;
+        }
+
+        .success {
+            color: #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <div id="filename">Loading...</div>
+        <div id="controls">
+            <button id="save-btn">Save</button>
+            <button id="close-btn">Close</button>
+        </div>
+    </div>
+
+    <textarea id="editor" autofocus autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+
+    <div id="status"></div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const filename = urlParams.get('file');
+
+        const filenameEl = document.getElementById('filename');
+        const editorEl = document.getElementById('editor');
+        const saveBtn = document.getElementById('save-btn');
+        const closeBtn = document.getElementById('close-btn');
+        const statusEl = document.getElementById('status');
+
+        // BroadcastChannel for communication with terminal
+        const channel = new BroadcastChannel('editor_channel');
+
+        // Listen for file content responses from terminal
+        channel.onmessage = (event) => {
+            const { action, filename: responseFilename, content } = event.data;
+
+            if (action === 'file_content' && responseFilename === filename) {
+                editorEl.value = content;
+                statusEl.textContent = 'Loaded from terminal';
+                statusEl.className = 'success';
+            }
+        };
+
+        if (!filename) {
+            filenameEl.textContent = 'Error: No filename specified';
+            statusEl.textContent = 'No file to edit';
+            statusEl.className = 'error';
+            editorEl.disabled = true;
+        } else {
+            filenameEl.textContent = `Editing: ${filename}`;
+
+            // Request file content from terminal
+            statusEl.textContent = 'Loading...';
+            channel.postMessage({
+                action: 'request_file',
+                filename: filename
+            });
+
+            // Fallback to localStorage if terminal doesn't respond within 1 second
+            setTimeout(() => {
+                if (statusEl.textContent === 'Loading...') {
+                    const storageKey = `file:${filename}`;
+                    const existingContent = localStorage.getItem(storageKey);
+                    if (existingContent) {
+                        editorEl.value = existingContent;
+                        statusEl.textContent = 'Loaded from localStorage';
+                    } else {
+                        statusEl.textContent = 'New file';
+                    }
+                }
+            }, 1000);
+        }
+
+        // Save button handler
+        saveBtn.addEventListener('click', () => {
+            if (!filename) return;
+
+            const content = editorEl.value;
+
+            // Send to terminal via BroadcastChannel
+            channel.postMessage({
+                action: 'file_saved',
+                filename: filename,
+                content: content
+            });
+
+            // Also save to localStorage as backup
+            const storageKey = `file:${filename}`;
+            localStorage.setItem(storageKey, content);
+
+            statusEl.textContent = 'Saved!';
+            statusEl.className = 'success';
+
+            setTimeout(() => {
+                statusEl.textContent = '';
+                statusEl.className = '';
+            }, 2000);
+        });
+
+        // Close button handler
+        closeBtn.addEventListener('click', () => {
+            window.close();
+        });
+
+        // Keyboard shortcut: Ctrl+S or Cmd+S to save
+        editorEl.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                e.preventDefault();
+                saveBtn.click();
+            }
+        });
+
+        // Auto-focus editor
+        editorEl.focus();
+    </script>
+</body>
+</html>
