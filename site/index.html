@@ -77,11 +77,64 @@
         let wasm = null;
         let wasmLoaded = false;
 
-        // Input-awaiting state machine
-        let inputState = {
-            mode: 'normal', // 'normal' or 'awaiting'
-            prompt: '',
-            callback: ''
+        // Callback functions for WASM to call
+        window.addOutput = function(text) {
+            const line = document.createElement('div');
+            line.className = 'output-line';
+            line.innerHTML = text;
+            output.appendChild(line);
+        };
+
+        window.clearOutput = function() {
+            output.innerHTML = '';
+        };
+
+        window.promptFilePicker = function(accept) {
+            return new Promise((resolve) => {
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file';
+                fileInput.accept = accept;
+
+                fileInput.onchange = async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) {
+                        resolve(null);
+                        return;
+                    }
+
+                    try {
+                        // Always return binary data (Uint8Array)
+                        const arrayBuffer = await file.arrayBuffer();
+                        resolve(new Uint8Array(arrayBuffer));
+                    } catch (err) {
+                        console.error('Error reading file:', err);
+                        resolve(null);
+                    }
+                };
+
+                fileInput.oncancel = () => {
+                    resolve(null);
+                };
+
+                fileInput.click();
+            });
+        };
+
+        window.triggerDownload = function(content, mimeType, filename) {
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        window.scrollToBottom = function() {
+            window.scrollTo(0, document.body.scrollHeight);
         };
 
         async function initWasm() {
@@ -93,374 +146,44 @@
                 // Load the manifest
                 await wasm.load_manifest();
 
+                // Initialize BroadcastChannels
+                wasm.initialize_broadcast_channels();
+
                 wasmLoaded = true;
-                addOutput('Terminal ready. Type \'help\' to get started, or try \'ls\' to list files.');
+                window.addOutput('Terminal ready. Type \'help\' to get started, or try \'ls\' to list files.');
             } catch (err) {
                 console.error('Failed to load WASM:', err);
-                addOutput('Warning: WASM module not loaded. Commands unavailable.');
+                window.addOutput('Warning: WASM module not loaded. Commands unavailable.');
             }
         }
 
         // Initialize WASM
         initWasm();
 
-        // BroadcastChannel for communication with editor
-        const editorChannel = new BroadcastChannel('editor_channel');
-
-        // BroadcastChannel for communication with pretty viewer
-        const prettyChannel = new BroadcastChannel('pretty_channel');
-
-        // Handler for file read requests (shared between editor and pretty viewer)
-        async function handleFileRequest(channel, filename) {
-            if (!wasmLoaded) return;
-
-            try {
-                // Read file from WASM virtual filesystem
-                const result = wasm.read_file(filename);
-
-                if (result.startsWith('InMemory:')) {
-                    // File is in memory, send it directly
-                    const fileContent = result.substring('InMemory:'.length);
-                    channel.postMessage({
-                        action: 'file_content',
-                        filename: filename,
-                        content: fileContent
-                    });
-                } else if (result.startsWith('ToFetch:')) {
-                    // File needs to be fetched from server
-                    const url = result.substring('ToFetch:'.length);
-                    try {
-                        const response = await fetch(url);
-                        const fileContent = await response.text();
-                        channel.postMessage({
-                            action: 'file_content',
-                            filename: filename,
-                            content: fileContent
-                        });
-                    } catch (err) {
-                        console.error('Failed to fetch file:', err);
-                        // Send empty content for new file
-                        channel.postMessage({
-                            action: 'file_content',
-                            filename: filename,
-                            content: ''
-                        });
-                    }
-                } else {
-                    // File not found, send empty content (new file)
-                    channel.postMessage({
-                        action: 'file_content',
-                        filename: filename,
-                        content: ''
-                    });
-                }
-            } catch (err) {
-                console.error('Failed to read file:', err);
-            }
-        }
-
-        editorChannel.onmessage = async (event) => {
-            const { action, filename, content } = event.data;
-
-            if (action === 'file_saved' && wasmLoaded) {
-                try {
-                    // Write file to WASM virtual filesystem
-                    wasm.write_file(filename, content);
-                    addOutput(`File saved: ${filename}`);
-                    addOutput('&nbsp;');
-                } catch (err) {
-                    console.error('Failed to save file:', err);
-                    addOutput(`Error saving file: ${err}`);
-                    addOutput('&nbsp;');
-                }
-            } else if (action === 'request_file') {
-                await handleFileRequest(editorChannel, filename);
-            }
-        };
-
-        prettyChannel.onmessage = async (event) => {
-            const { action, filename } = event.data;
-
-            if (action === 'request_file') {
-                await handleFileRequest(prettyChannel, filename);
-            }
-        };
-
         // Keep input focused
         terminal.addEventListener('click', () => {
             input.focus();
         });
 
-        // Handle commands
+        // Handle commands - simplified main loop
         input.addEventListener('keydown', async (e) => {
             if (e.key === 'Enter') {
-                const userInput = input.value.trim();
-
-                // Display the input
-                addOutput(`> ${userInput}`);
-
-                // Process based on current state
-                if (inputState.mode === 'awaiting') {
-                    // Handle awaiting input mode
-                    const callback = inputState.callback.replace('{input}', userInput);
-
-                    // Reset to normal mode (might be set back to awaiting if callback returns another AWAIT_INPUT)
-                    inputState.mode = 'normal';
-                    inputState.prompt = '';
-                    inputState.callback = '';
-
-                    // Process callback command
-                    if (wasmLoaded) {
-                        try {
-                            const result = await wasm.process_command(callback);
-                            if (result) {
-                                // Check if callback result is also an AWAIT_INPUT response
-                                if (result.startsWith('::AWAIT_INPUT::')) {
-                                    handleAwaitInput(result);
-                                } else {
-                                    result.split('\n').forEach(line => addOutput(line));
-                                }
-                            }
-                        } catch (err) {
-                            console.error('Callback error:', err);
-                            addOutput(`Error: ${err}`);
-                        }
-                    }
-                } else {
-                    // Normal command processing
-                    if (userInput === '') {
-                        // Do nothing for empty command
-                    } else if (userInput === 'clear') {
-                        output.innerHTML = '';
-                    } else if (wasmLoaded) {
-                        // Pass to WASM for processing
-                        try {
-                            const result = await wasm.process_command(userInput);
-                            if (result) {
-                                // Check if result is an AWAIT_INPUT response
-                                if (result.startsWith('::AWAIT_INPUT::')) {
-                                    handleAwaitInput(result);
-                                } else if (result.startsWith('::FILE_PICKER::')) {
-                                    // Handle file picker request
-                                    const remaining = result.substring('::FILE_PICKER::'.length);
-                                    await handleFilePicker(remaining);
-                                } else if (result.startsWith('::FILE_DOWNLOAD::')) {
-                                    // Handle file download request
-                                    const filename = result.substring('::FILE_DOWNLOAD::'.length);
-                                    await handleFileDownload(filename);
-                                } else if (result.startsWith('::SAVE_SESSION::')) {
-                                    // Handle session export
-                                    handleSessionExport();
-                                } else if (result.startsWith('::LOAD_SESSION::')) {
-                                    // Handle session import
-                                    handleSessionImport();
-                                } else {
-                                    result.split('\n').forEach(line => addOutput(line));
-                                }
-                            }
-                        } catch (err) {
-                            console.error('Command error:', err);
-                            addOutput(`Error: ${err}`);
-                        }
-                    } else {
-                        addOutput('Terminal not ready. Please wait...');
-                    }
-                }
-
-                // Add blank line after output (except for clear)
-                if (userInput !== 'clear') {
-                    addOutput('&nbsp;');
-                }
-
-                // Clear input
+                const userInput = input.value;
                 input.value = '';
 
-                // Scroll to bottom
-                window.scrollTo(0, document.body.scrollHeight);
-            }
-        });
-
-        // Handle ::AWAIT_INPUT:: responses
-        function handleAwaitInput(response) {
-            const lines = response.split('\n');
-            let prompt = '';
-            let callback = '';
-
-            for (const line of lines) {
-                if (line.startsWith('prompt: ')) {
-                    prompt = line.substring(8);
-                } else if (line.startsWith('callback: ')) {
-                    callback = line.substring(10);
-                }
-            }
-
-            // Display the prompt
-            addOutput(prompt);
-
-            // Set state to awaiting
-            inputState.mode = 'awaiting';
-            inputState.prompt = prompt;
-            inputState.callback = callback;
-        }
-
-        // Handle file picker for load command
-        async function handleFilePicker(remaining) {
-            try {
-                const parts = remaining.split(' ');
-                const acceptable = parts[0];
-                const filename = parts[1];
-                // Create a file input element
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = acceptable;
-
-                fileInput.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) {
-                        addOutput('No file selected.');
-                        return;
-                    }
-
+                if (wasmLoaded) {
                     try {
-                        const content = await file.text();
-                        wasm.write_file(filename, content);
-                        addOutput(`Loaded file into: ${filename}`);
+                        // Pass input to WASM - it handles everything including display
+                        await wasm.handle_input(userInput);
                     } catch (err) {
-                        addOutput(`Error reading file: ${err}`);
-                    }
-                };
-
-                // Trigger file picker
-                fileInput.click();
-            } catch (err) {
-                addOutput(`Error: ${err}`);
-            }
-        }
-
-        // Handle session import for load-session command
-        function handleSessionImport() {
-            try {
-                // Create a file input element
-                const fileInput = document.createElement('input');
-                fileInput.type = 'file';
-                fileInput.accept = '.json';
-
-                fileInput.onchange = async (e) => {
-                    const file = e.target.files[0];
-                    if (!file) {
-                        addOutput('No file selected.');
-                        return;
-                    }
-
-                    try {
-                        const sessionJson = await file.text();
-                        const result = wasm.import_session(sessionJson);
-
-                        if (result.startsWith('Error:')) {
-                            addOutput(result);
-                        } else {
-                            addOutput(result);
-                        }
-                    } catch (err) {
-                        addOutput(`Error reading session file: ${err}`);
-                    }
-                };
-
-                // Trigger file picker
-                fileInput.click();
-            } catch (err) {
-                addOutput(`Error: ${err}`);
-            }
-        }
-
-        // Handle session export for save-session command
-        function handleSessionExport() {
-            try {
-                // Get session JSON from WASM
-                const sessionJson = wasm.export_session();
-                const session = JSON.parse(sessionJson);
-
-                const fileCount = Object.keys(session.files).length;
-
-                if (fileCount === 0) {
-                    addOutput('No in-memory files to export.');
-                    return;
-                }
-
-                // Create filename with timestamp
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-                const filename = `session-${timestamp}.json`;
-
-                // Create blob and download
-                const blob = new Blob([sessionJson], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                addOutput(`Exported ${fileCount} file(s) to: ${filename}`);
-            } catch (err) {
-                addOutput(`Error exporting session: ${err}`);
-            }
-        }
-
-        // Handle file download for save command
-        async function handleFileDownload(filename) {
-            try {
-                // Read file from WASM virtual filesystem
-                const result = wasm.read_file(filename);
-
-                let content;
-                if (result.startsWith('InMemory:')) {
-                    // File is in memory
-                    content = result.substring('InMemory:'.length);
-                } else if (result.startsWith('ToFetch:')) {
-                    // File needs to be fetched from server
-                    const url = result.substring('ToFetch:'.length);
-                    try {
-                        const response = await fetch(url);
-                        content = await response.text();
-                    } catch (err) {
-                        addOutput(`Error fetching file: ${err}`);
-                        return;
+                        console.error('Command error:', err);
+                        window.addOutput(`Error: ${err}`);
                     }
                 } else {
-                    addOutput(`save: ${filename}: No such file`);
-                    return;
+                    window.addOutput('Terminal not ready. Please wait...');
                 }
-
-                // Create a blob and download it
-                const blob = new Blob([content], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-
-                // Extract just the filename (not the full path) for download
-                const downloadName = filename.split('/').pop();
-                a.download = downloadName;
-
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                addOutput(`Downloading: ${filename}`);
-            } catch (err) {
-                addOutput(`Error: ${err}`);
             }
-        }
-
-        function addOutput(text) {
-            const line = document.createElement('div');
-            line.className = 'output-line';
-            line.innerHTML = text;
-            output.appendChild(line);
-        }
+        });
     </script>
 </body>
 </html>

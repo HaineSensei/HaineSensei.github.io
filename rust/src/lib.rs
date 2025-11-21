@@ -1,14 +1,44 @@
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode, Response};
+use web_sys::{Request, RequestInit, RequestMode, Response, BroadcastChannel, MessageEvent};
+use js_sys::{Uint8Array, Date};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use serde::Deserialize;
 
+// External JavaScript functions that Rust can call
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_name = addOutput)]
+    fn add_output(text: &str);
+
+    #[wasm_bindgen(js_name = clearOutput)]
+    fn clear_output();
+
+    #[wasm_bindgen(js_name = promptFilePicker)]
+    fn prompt_file_picker(accept: &str) -> js_sys::Promise;
+
+    #[wasm_bindgen(js_name = triggerDownload)]
+    fn trigger_download(content: &[u8], mime_type: &str, filename: &str);
+
+    #[wasm_bindgen(js_name = scrollToBottom)]
+    fn scroll_to_bottom();
+}
+
+// Handler for next input - determines what function receives the next user input
+#[derive(Clone)]
+enum NextInputHandler {
+    None,
+    PrettyConfirm { filepath: String, path_arg: String },
+}
+
 thread_local! {
     static CURRENT_DIR: RefCell<DirPath> = RefCell::new(DirPath::root());
     static VIRTUAL_FS: RefCell<VirtualFilesystem> = RefCell::new(VirtualFilesystem::new());
+    static NEXT_INPUT_HANDLER: RefCell<NextInputHandler> = RefCell::new(NextInputHandler::None);
+    static EDITOR_CHANNEL: RefCell<Option<web_sys::BroadcastChannel>> = RefCell::new(None);
+    static PRETTY_CHANNEL: RefCell<Option<web_sys::BroadcastChannel>> = RefCell::new(None);
 }
 
 #[derive(Deserialize, Clone)]
@@ -389,6 +419,156 @@ pub async fn load_manifest() -> Result<(), JsValue> {
     Ok(())
 }
 
+// Initialize BroadcastChannels for communication with editor and pretty viewer
+#[wasm_bindgen]
+pub fn initialize_broadcast_channels() -> Result<(), JsValue> {
+    use wasm_bindgen::closure::Closure;
+
+    // Create editor channel
+    let editor_channel = BroadcastChannel::new("editor_channel")?;
+    let editor_onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+        handle_editor_message(event);
+    });
+    editor_channel.set_onmessage(Some(editor_onmessage.as_ref().unchecked_ref()));
+    editor_onmessage.forget(); // Keep the closure alive
+
+    // Create pretty channel
+    let pretty_channel = BroadcastChannel::new("pretty_channel")?;
+    let pretty_onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+        handle_pretty_message(event);
+    });
+    pretty_channel.set_onmessage(Some(pretty_onmessage.as_ref().unchecked_ref()));
+    pretty_onmessage.forget(); // Keep the closure alive
+
+    // Store channels
+    EDITOR_CHANNEL.with(|ch| {
+        *ch.borrow_mut() = Some(editor_channel);
+    });
+    PRETTY_CHANNEL.with(|ch| {
+        *ch.borrow_mut() = Some(pretty_channel);
+    });
+
+    Ok(())
+}
+
+// Handle messages from editor
+fn handle_editor_message(event: MessageEvent) {
+    let data = event.data();
+
+    // Parse message data
+    if let Ok(obj) = data.dyn_into::<js_sys::Object>() {
+        let action = js_sys::Reflect::get(&obj, &JsValue::from_str("action")).ok();
+        let filename = js_sys::Reflect::get(&obj, &JsValue::from_str("filename")).ok();
+        let content = js_sys::Reflect::get(&obj, &JsValue::from_str("content")).ok();
+
+        if let (Some(action), Some(filename)) = (action, filename) {
+            let action_str = action.as_string().unwrap_or_default();
+            let filename_str = filename.as_string().unwrap_or_default();
+
+            match action_str.as_str() {
+                "file_saved" => {
+                    if let Some(content) = content {
+                        if let Some(content_str) = content.as_string() {
+                            // Write file to WASM virtual filesystem
+                            let filepath = FilePath::parse(&filename_str, &DirPath::root());
+                            VIRTUAL_FS.with(|vfs| {
+                                vfs.borrow_mut().write_file(&filepath, content_str);
+                            });
+                            add_output(&format!("File saved: {}", filename_str));
+                            add_output("&nbsp;");
+                        }
+                    }
+                }
+                "request_file" => {
+                    send_file_content(&filename_str, true);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+// Handle messages from pretty viewer
+fn handle_pretty_message(event: MessageEvent) {
+    let data = event.data();
+
+    if let Ok(obj) = data.dyn_into::<js_sys::Object>() {
+        let action = js_sys::Reflect::get(&obj, &JsValue::from_str("action")).ok();
+        let filename = js_sys::Reflect::get(&obj, &JsValue::from_str("filename")).ok();
+
+        if let (Some(action), Some(filename)) = (action, filename) {
+            let action_str = action.as_string().unwrap_or_default();
+            let filename_str = filename.as_string().unwrap_or_default();
+
+            if action_str == "request_file" {
+                send_file_content(&filename_str, false);
+            }
+        }
+    }
+}
+
+// Send file content via BroadcastChannel
+fn send_file_content(filename: &str, to_editor: bool) {
+    let filepath = FilePath::parse(filename, &DirPath::root());
+
+    // Get content from virtual filesystem
+    let content_result = VIRTUAL_FS.with(|vfs| {
+        vfs.borrow().get_content(&filepath).cloned()
+    });
+
+    let channel = if to_editor {
+        EDITOR_CHANNEL.with(|ch| ch.borrow().clone())
+    } else {
+        PRETTY_CHANNEL.with(|ch| ch.borrow().clone())
+    };
+
+    if let Some(channel) = channel {
+        match content_result {
+            Some(Content::InMemory(content)) => {
+                // Send in-memory content
+                let message = js_sys::Object::new();
+                js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
+                js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+                js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str(&content)).ok();
+                channel.post_message(&message).ok();
+            }
+            Some(Content::ToFetch) => {
+                // Need to fetch - spawn async task
+                let filename = filename.to_string();
+                let channel_clone = channel.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let filepath = FilePath::parse(&filename, &DirPath::root());
+                    match fetch_text(&filepath.to_url()).await {
+                        Ok(content) => {
+                            let message = js_sys::Object::new();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(&filename)).ok();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str(&content)).ok();
+                            channel_clone.post_message(&message).ok();
+                        }
+                        Err(_) => {
+                            // Send empty content for errors
+                            let message = js_sys::Object::new();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(&filename)).ok();
+                            js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str("")).ok();
+                            channel_clone.post_message(&message).ok();
+                        }
+                    }
+                });
+            }
+            None => {
+                // File not found, send empty content
+                let message = js_sys::Object::new();
+                js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
+                js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+                js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str("")).ok();
+                channel.post_message(&message).ok();
+            }
+        }
+    }
+}
+
 // Write a file to the virtual filesystem (called from JavaScript/editor)
 #[wasm_bindgen]
 pub fn write_file(path: &str, content: String) -> Result<(), JsValue> {
@@ -546,6 +726,69 @@ fn list_directory(path: &DirPath) -> Vec<String> {
     })
 }
 
+/// Main entry point from JavaScript - handles input and manages display
+#[wasm_bindgen]
+pub async fn handle_input(user_input: &str) {
+    let user_input = user_input.trim();
+
+    // Display the input
+    add_output(&format!("> {}", user_input));
+
+    // Dispatch based on current handler
+    let handler = NEXT_INPUT_HANDLER.with(|h| h.borrow().clone());
+
+    match handler {
+        NextInputHandler::None => {
+            process_normal_command(user_input).await;
+        }
+        NextInputHandler::PrettyConfirm { filepath, path_arg } => {
+            handle_pretty_confirm(user_input, &filepath, &path_arg);
+        }
+    }
+
+    // Add blank line after output (except for clear, handled in process_normal_command)
+    add_output("&nbsp;");
+    scroll_to_bottom();
+}
+
+/// Handle confirmation for pretty command
+fn handle_pretty_confirm(user_input: &str, filepath: &str, path_arg: &str) {
+    let response = if user_input.to_lowercase() == "y" || user_input.to_lowercase() == "yes" {
+        open_pretty_page(filepath, path_arg)
+    } else {
+        "Cancelled.".to_string()
+    };
+
+    add_output(&response);
+
+    // Clear handler - return to normal mode
+    NEXT_INPUT_HANDLER.with(|h| *h.borrow_mut() = NextInputHandler::None);
+}
+
+/// Process a normal command (not a response to a prompt)
+async fn process_normal_command(user_input: &str) {
+    if user_input.is_empty() {
+        // Do nothing for empty command
+        return;
+    }
+
+    if user_input == "clear" {
+        clear_output();
+        // Note: Don't add blank line or scroll for clear
+        // Early return prevents handle_input from adding &nbsp;
+        return;
+    }
+
+    let result = process_command(user_input).await;
+
+    // Display output
+    if !result.is_empty() {
+        for line in result.split('\n') {
+            add_output(line);
+        }
+    }
+}
+
 /// Main command processor - handles all non-content commands
 /// Add new commands here!
 #[wasm_bindgen]
@@ -567,13 +810,20 @@ pub async fn process_command(command: &str) -> String {
 
             let filepath = FilePath::new(DirPath::root(), filename.clone());
 
-            if filepath.exists() {
-                match fetch_text(&filepath.to_url()).await {
-                    Ok(content) => content,
-                    Err(e) => format!("Error loading {}: {}", filename, e),
+            // Check if file exists and get content type
+            let content_type = VIRTUAL_FS.with(|vfs| {
+                vfs.borrow().get_content(&filepath).cloned()
+            });
+
+            match content_type {
+                Some(Content::InMemory(content)) => content,
+                Some(Content::ToFetch) => {
+                    match fetch_text(&filepath.to_url()).await {
+                        Ok(content) => content,
+                        Err(e) => format!("Error loading {}: {}", filename, e),
+                    }
                 }
-            } else {
-                format!("File not found: {}", filename)
+                None => format!("File not found: {}", filename),
             }
         }
 
@@ -582,13 +832,20 @@ pub async fn process_command(command: &str) -> String {
             let filename = format!("{}.txt", parts[0]);
             let filepath = FilePath::new(DirPath::root(), filename.clone());
 
-            if filepath.exists() {
-                match fetch_text(&filepath.to_url()).await {
-                    Ok(content) => content,
-                    Err(e) => format!("Error loading {}: {}", filename, e),
+            // Check if file exists and get content type
+            let content_type = VIRTUAL_FS.with(|vfs| {
+                vfs.borrow().get_content(&filepath).cloned()
+            });
+
+            match content_type {
+                Some(Content::InMemory(content)) => content,
+                Some(Content::ToFetch) => {
+                    match fetch_text(&filepath.to_url()).await {
+                        Ok(content) => content,
+                        Err(e) => format!("Error loading {}: {}", filename, e),
+                    }
                 }
-            } else {
-                format!("File not found: {}", filename)
+                None => format!("File not found: {}", filename),
             }
         }
 
@@ -786,11 +1043,32 @@ pub async fn process_command(command: &str) -> String {
                 return "Usage: load <filename>\n\nOpens a file picker to load a file from your device into the virtual filesystem.".to_string();
             }
 
-            let target_filename = parts[1];
+            let target_filename = parts[1].to_string();
 
-            // Return a special marker that tells JavaScript to trigger file picker
-            // Format: ::FILE_PICKER::<acceptable_extensions> <filename>
-            format!("::FILE_PICKER::.kh,.txt,.md {}", target_filename)
+            // Prompt for file picker (returns binary data)
+            let file_data = JsFuture::from(prompt_file_picker(".kh,.txt,.md")).await;
+
+            match file_data {
+                Ok(data) if !data.is_null() && !data.is_undefined() => {
+                    // Convert JsValue to Vec<u8>
+                    let uint8_array = Uint8Array::new(&data);
+                    let bytes = uint8_array.to_vec();
+
+                    // Interpret as UTF-8 string
+                    match String::from_utf8(bytes) {
+                        Ok(content) => {
+                            // Write to virtual filesystem
+                            let filepath = CURRENT_DIR.with(|cd| FilePath::parse(&target_filename, &cd.borrow()));
+                            VIRTUAL_FS.with(|vfs| {
+                                vfs.borrow_mut().write_file(&filepath, content);
+                            });
+                            format!("Loaded file into: {}", target_filename)
+                        }
+                        Err(_) => "Error: File is not valid UTF-8 text".to_string(),
+                    }
+                }
+                _ => "No file selected.".to_string(),
+            }
         }
 
         "save" => {
@@ -801,19 +1079,82 @@ pub async fn process_command(command: &str) -> String {
             let path_arg = parts[1];
             let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
-            // Return special marker to tell JavaScript to trigger file download
-            // Format: ::FILE_DOWNLOAD::<filepath>
-            format!("::FILE_DOWNLOAD::{}", filepath.to_string())
+            // Get file content
+            let content_type = VIRTUAL_FS.with(|vfs| {
+                vfs.borrow().get_content(&filepath).cloned()
+            });
+
+            match content_type {
+                Some(Content::InMemory(content)) => {
+                    // Extract just the filename (not the full path) for download
+                    let download_name = filepath.file.clone();
+                    trigger_download(content.as_bytes(), "text/plain", &download_name);
+                    format!("Downloading: {}", path_arg)
+                }
+                Some(Content::ToFetch) => {
+                    // Need to fetch from server first
+                    match fetch_text(&filepath.to_url()).await {
+                        Ok(content) => {
+                            let download_name = filepath.file.clone();
+                            trigger_download(content.as_bytes(), "text/plain", &download_name);
+                            format!("Downloading: {}", path_arg)
+                        }
+                        Err(e) => format!("Error fetching file: {}", e),
+                    }
+                }
+                None => format!("save: {}: No such file", path_arg),
+            }
         }
 
         "save-session" => {
-            // Return special marker to tell JavaScript to export session
-            "::SAVE_SESSION::".to_string()
+            // Get session JSON from WASM
+            let session_json = export_session();
+            let session: serde_json::Value = serde_json::from_str(&session_json)
+                .unwrap_or(serde_json::json!({"files": {}}));
+
+            let file_count = session.get("files")
+                .and_then(|f| f.as_object())
+                .map(|obj| obj.len())
+                .unwrap_or(0);
+
+            if file_count == 0 {
+                "No in-memory files to export.".to_string()
+            } else {
+                // Create filename with timestamp
+                let timestamp = Date::new_0().to_iso_string().as_string().unwrap()
+                    .replace(":", "-")
+                    .replace(".", "-")
+                    .chars()
+                    .take(19)
+                    .collect::<String>();
+                let filename = format!("session-{}.json", timestamp);
+
+                trigger_download(session_json.as_bytes(), "application/json", &filename);
+                format!("Exported {} file(s) to: {}", file_count, filename)
+            }
         }
 
         "load-session" => {
-            // Return special marker to tell JavaScript to trigger file picker for session
-            "::LOAD_SESSION::".to_string()
+            // Prompt for file picker (returns binary data)
+            let file_data = JsFuture::from(prompt_file_picker(".json")).await;
+
+            match file_data {
+                Ok(data) if !data.is_null() && !data.is_undefined() => {
+                    // Convert JsValue to Vec<u8>
+                    let uint8_array = Uint8Array::new(&data);
+                    let bytes = uint8_array.to_vec();
+
+                    // Interpret as UTF-8 string (JSON)
+                    match String::from_utf8(bytes) {
+                        Ok(session_json) => {
+                            let result = import_session(session_json);
+                            result
+                        }
+                        Err(_) => "Error: File is not valid UTF-8 text".to_string(),
+                    }
+                }
+                _ => "No file selected.".to_string(),
+            }
         }
 
         "rm" => {
@@ -940,26 +1281,17 @@ pub async fn process_command(command: &str) -> String {
                 // Open directly
                 open_pretty_page(&filepath.to_string(), path_arg)
             } else {
-                // Ask for confirmation
-                format!("::AWAIT_INPUT::\nprompt: Warning: '{}' is not a markdown file. Render anyway? (y/n)\ncallback: __pretty_confirm__ {{input}} {} {}\n::END::",
-                    path_arg, filepath.to_string(), path_arg)
-            }
-        }
+                // Ask for confirmation - set handler for next input
+                add_output(&format!("Warning: '{}' is not a markdown file. Render anyway? (y/n)", path_arg));
 
-        // Internal callback commands (prefixed with __)
-        "__pretty_confirm__" => {
-            if parts.len() < 4 {
-                return "Error: Invalid callback".to_string();
-            }
+                NEXT_INPUT_HANDLER.with(|h| {
+                    *h.borrow_mut() = NextInputHandler::PrettyConfirm {
+                        filepath: filepath.to_string(),
+                        path_arg: path_arg.to_string(),
+                    };
+                });
 
-            let user_response = parts[1].to_lowercase();
-            let file_path = parts[2];
-            let path_arg = parts[3];
-
-            if user_response == "y" || user_response == "yes" {
-                open_pretty_page(file_path, path_arg) 
-            } else {
-                "Cancelled.".to_string()
+                String::new()  // No additional output, prompt already displayed
             }
         }
 

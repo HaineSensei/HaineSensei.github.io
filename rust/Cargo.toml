@@ -23,6 +23,8 @@ features = [
     "RequestMode",
     "Response",
     "Headers",
+    "BroadcastChannel",
+    "MessageEvent",
 ]
 
 [profile.release]
