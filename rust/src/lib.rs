@@ -369,6 +369,34 @@ impl DirPath {
         }
         out
     }
+
+    // Parse a path string into DirPath
+    fn parse(path: &str, current_dir: &DirPath) -> Self {
+        // Handle special case for root
+        if path == "/" {
+            return DirPath::root();
+        }
+
+        // Determine starting directory
+        let mut new_path = if path.starts_with('/') {
+            // Absolute path
+            DirPath::root()
+        } else {
+            // Relative path
+            current_dir.clone()
+        };
+
+        // Process path components
+        for component in path.split('/').filter(|s| !s.is_empty()) {
+            match component {
+                "." => {}, // Stay in current directory
+                ".." => new_path.cd(&NextDir::Out, true),
+                name => new_path.cd(&NextDir::In(name.to_string()), true),
+            }
+        }
+
+        new_path
+    }
 }
 
 // Async fetch helper
@@ -399,6 +427,21 @@ async fn fetch_text(url: &str) -> Result<String, String> {
         .map_err(|_| "Failed to read response text")?;
 
     text.as_string().ok_or_else(|| "Response text is not a string".to_string())
+}
+
+// Get file content (fetch if needed)
+async fn get_file_content(filepath: &FilePath) -> Result<String, String> {
+    let content_type = VIRTUAL_FS.with(|vfs| {
+        vfs.borrow().get_content(filepath).cloned()
+    });
+
+    match content_type {
+        Some(Content::InMemory(content)) => Ok(content),
+        Some(Content::ToFetch) => {
+            fetch_text(&filepath.to_url()).await
+        }
+        None => Err(format!("{}: No such file", filepath.to_string())),
+    }
 }
 
 // Load manifest from server and initialize virtual filesystem
@@ -507,6 +550,15 @@ fn handle_pretty_message(event: MessageEvent) {
     }
 }
 
+// Build a file_content message for BroadcastChannel
+fn build_file_content_message(filename: &str, content: &str) -> js_sys::Object {
+    let message = js_sys::Object::new();
+    js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
+    js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
+    js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str(content)).ok();
+    message
+}
+
 // Send file content via BroadcastChannel
 fn send_file_content(filename: &str, to_editor: bool) {
     let filepath = FilePath::parse(filename, &DirPath::root());
@@ -526,10 +578,7 @@ fn send_file_content(filename: &str, to_editor: bool) {
         match content_result {
             Some(Content::InMemory(content)) => {
                 // Send in-memory content
-                let message = js_sys::Object::new();
-                js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
-                js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
-                js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str(&content)).ok();
+                let message = build_file_content_message(filename, &content);
                 channel.post_message(&message).ok();
             }
             Some(Content::ToFetch) => {
@@ -540,18 +589,12 @@ fn send_file_content(filename: &str, to_editor: bool) {
                     let filepath = FilePath::parse(&filename, &DirPath::root());
                     match fetch_text(&filepath.to_url()).await {
                         Ok(content) => {
-                            let message = js_sys::Object::new();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(&filename)).ok();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str(&content)).ok();
+                            let message = build_file_content_message(&filename, &content);
                             channel_clone.post_message(&message).ok();
                         }
                         Err(_) => {
                             // Send empty content for errors
-                            let message = js_sys::Object::new();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(&filename)).ok();
-                            js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str("")).ok();
+                            let message = build_file_content_message(&filename, "");
                             channel_clone.post_message(&message).ok();
                         }
                     }
@@ -559,10 +602,7 @@ fn send_file_content(filename: &str, to_editor: bool) {
             }
             None => {
                 // File not found, send empty content
-                let message = js_sys::Object::new();
-                js_sys::Reflect::set(&message, &JsValue::from_str("action"), &JsValue::from_str("file_content")).ok();
-                js_sys::Reflect::set(&message, &JsValue::from_str("filename"), &JsValue::from_str(filename)).ok();
-                js_sys::Reflect::set(&message, &JsValue::from_str("content"), &JsValue::from_str("")).ok();
+                let message = build_file_content_message(filename, "");
                 channel.post_message(&message).ok();
             }
         }
@@ -803,27 +843,16 @@ pub async fn process_command(command: &str) -> String {
         // Help command with optional -v flag
         "help" => {
             let filename = if parts.len() > 1 && parts[1] == "-v" {
-                "help-verbose.txt".to_string()
+                "help-verbose.txt"
             } else {
-                "help.txt".to_string()
+                "help.txt"
             };
 
-            let filepath = FilePath::new(DirPath::root(), filename.clone());
+            let filepath = FilePath::new(DirPath::root(), filename.to_string());
 
-            // Check if file exists and get content type
-            let content_type = VIRTUAL_FS.with(|vfs| {
-                vfs.borrow().get_content(&filepath).cloned()
-            });
-
-            match content_type {
-                Some(Content::InMemory(content)) => content,
-                Some(Content::ToFetch) => {
-                    match fetch_text(&filepath.to_url()).await {
-                        Ok(content) => content,
-                        Err(e) => format!("Error loading {}: {}", filename, e),
-                    }
-                }
-                None => format!("File not found: {}", filename),
+            match get_file_content(&filepath).await {
+                Ok(content) => content,
+                Err(e) => format!("Error loading {}: {}", filename, e),
             }
         }
 
@@ -832,20 +861,9 @@ pub async fn process_command(command: &str) -> String {
             let filename = format!("{}.txt", parts[0]);
             let filepath = FilePath::new(DirPath::root(), filename.clone());
 
-            // Check if file exists and get content type
-            let content_type = VIRTUAL_FS.with(|vfs| {
-                vfs.borrow().get_content(&filepath).cloned()
-            });
-
-            match content_type {
-                Some(Content::InMemory(content)) => content,
-                Some(Content::ToFetch) => {
-                    match fetch_text(&filepath.to_url()).await {
-                        Ok(content) => content,
-                        Err(e) => format!("Error loading {}: {}", filename, e),
-                    }
-                }
-                None => format!("File not found: {}", filename),
+            match get_file_content(&filepath).await {
+                Ok(content) => content,
+                Err(e) => format!("Error loading {}: {}", filename, e),
             }
         }
 
@@ -857,35 +875,14 @@ pub async fn process_command(command: &str) -> String {
             let target_dir = if parts.len() > 1 {
                 // ls with directory argument
                 let target = parts[1];
+                let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
-                if target == "/" {
-                    DirPath::root()
-                } else {
-                    // Parse directory path
-                    let mut new_path = if target.starts_with('/') {
-                        // Absolute path
-                        DirPath::root()
-                    } else {
-                        // Relative path
-                        CURRENT_DIR.with(|cd| cd.borrow().clone())
-                    };
-
-                    // Process path components
-                    for component in target.split('/').filter(|s| !s.is_empty()) {
-                        match component {
-                            "." => {},
-                            ".." => new_path.cd(&NextDir::Out, true),
-                            name => new_path.cd(&NextDir::In(name.to_string()), true),
-                        }
-                    }
-
-                    // Check if directory exists
-                    if !dir_exists(&new_path) {
-                        return format!("ls: {}: No such directory", target);
-                    }
-
-                    new_path
+                // Check if directory exists
+                if !dir_exists(&new_path) {
+                    return format!("ls: {}: No such directory", target);
                 }
+
+                new_path
             } else {
                 // ls with no arguments - use current directory
                 CURRENT_DIR.with(|cd| cd.borrow().clone())
@@ -910,32 +907,7 @@ pub async fn process_command(command: &str) -> String {
             }
 
             let target = parts[1];
-
-            // Handle special cases
-            if target == "/" {
-                CURRENT_DIR.with(|cd| {
-                    *cd.borrow_mut() = DirPath::root();
-                });
-                return String::new();
-            }
-
-            // Parse path
-            let mut new_path = if target.starts_with('/') {
-                // Absolute path
-                DirPath::root()
-            } else {
-                // Relative path
-                CURRENT_DIR.with(|cd| cd.borrow().clone())
-            };
-
-            // Process path components
-            for component in target.split('/').filter(|s| !s.is_empty()) {
-                match component {
-                    "." => {}, // Stay in current directory
-                    ".." => new_path.cd(&NextDir::Out, true),
-                    name => new_path.cd(&NextDir::In(name.to_string()), true),
-                }
-            }
+            let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
             // Check if directory exists
             if dir_exists(&new_path) {
@@ -954,25 +926,11 @@ pub async fn process_command(command: &str) -> String {
             }
 
             let path_arg = parts[1];
-
-            // Parse the path (supports both "file.txt" and "path/to/file.txt")
             let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
-            // Check if file exists and get content type
-            let content_type = VIRTUAL_FS.with(|vfs| {
-                vfs.borrow().get_content(&filepath).cloned()
-            });
-
-            match content_type {
-                Some(Content::InMemory(content)) => content,
-                Some(Content::ToFetch) => {
-                    // Fetch file content from server
-                    match fetch_text(&filepath.to_url()).await {
-                        Ok(content) => content,
-                        Err(e) => format!("cat: Failed to read {}: {}", path_arg, e),
-                    }
-                }
-                None => format!("cat: {}: No such file", path_arg),
+            match get_file_content(&filepath).await {
+                Ok(content) => content,
+                Err(_) => format!("cat: {}: No such file", path_arg),
             }
         }
 
@@ -1079,30 +1037,13 @@ pub async fn process_command(command: &str) -> String {
             let path_arg = parts[1];
             let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
-            // Get file content
-            let content_type = VIRTUAL_FS.with(|vfs| {
-                vfs.borrow().get_content(&filepath).cloned()
-            });
-
-            match content_type {
-                Some(Content::InMemory(content)) => {
-                    // Extract just the filename (not the full path) for download
+            match get_file_content(&filepath).await {
+                Ok(content) => {
                     let download_name = filepath.file.clone();
                     trigger_download(content.as_bytes(), "text/plain", &download_name);
                     format!("Downloading: {}", path_arg)
                 }
-                Some(Content::ToFetch) => {
-                    // Need to fetch from server first
-                    match fetch_text(&filepath.to_url()).await {
-                        Ok(content) => {
-                            let download_name = filepath.file.clone();
-                            trigger_download(content.as_bytes(), "text/plain", &download_name);
-                            format!("Downloading: {}", path_arg)
-                        }
-                        Err(e) => format!("Error fetching file: {}", e),
-                    }
-                }
-                None => format!("save: {}: No such file", path_arg),
+                Err(_) => format!("save: {}: No such file", path_arg),
             }
         }
 
@@ -1180,33 +1121,7 @@ pub async fn process_command(command: &str) -> String {
             }
 
             let dir_arg = parts[1];
-
-            // Parse directory path
-            let new_path = if dir_arg.starts_with('/') {
-                // Absolute path
-                let mut path = DirPath::root();
-                for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
-                    match component {
-                        "." => {},
-                        ".." => path.cd(&NextDir::Out, true),
-                        name => path.cd(&NextDir::In(name.to_string()), true),
-                    }
-                }
-                path
-            } else {
-                // Relative path
-                CURRENT_DIR.with(|cd| {
-                    let mut path = cd.borrow().clone();
-                    for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
-                        match component {
-                            "." => {},
-                            ".." => path.cd(&NextDir::Out, true),
-                            name => path.cd(&NextDir::In(name.to_string()), true),
-                        }
-                    }
-                    path
-                })
-            };
+            let new_path = CURRENT_DIR.with(|cd| DirPath::parse(dir_arg, &cd.borrow()));
 
             VIRTUAL_FS.with(|vfs| {
                 let mut vfs_mut = vfs.borrow_mut();
@@ -1225,33 +1140,7 @@ pub async fn process_command(command: &str) -> String {
             }
 
             let dir_arg = parts[1];
-
-            // Parse directory path
-            let target_path = if dir_arg.starts_with('/') {
-                // Absolute path
-                let mut path = DirPath::root();
-                for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
-                    match component {
-                        "." => {},
-                        ".." => path.cd(&NextDir::Out, true),
-                        name => path.cd(&NextDir::In(name.to_string()), true),
-                    }
-                }
-                path
-            } else {
-                // Relative path
-                CURRENT_DIR.with(|cd| {
-                    let mut path = cd.borrow().clone();
-                    for component in dir_arg.split('/').filter(|s| !s.is_empty()) {
-                        match component {
-                            "." => {},
-                            ".." => path.cd(&NextDir::Out, true),
-                            name => path.cd(&NextDir::In(name.to_string()), true),
-                        }
-                    }
-                    path
-                })
-            };
+            let target_path = CURRENT_DIR.with(|cd| DirPath::parse(dir_arg, &cd.borrow()));
 
             VIRTUAL_FS.with(|vfs| {
                 match vfs.borrow_mut().remove_dir(&target_path) {
