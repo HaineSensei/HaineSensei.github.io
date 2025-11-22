@@ -1,0 +1,29 @@
+save-session - Export session to file
+
+USAGE:
+  save-session
+
+DESCRIPTION:
+  Exports all in-memory files (user-created content) to a JSON session
+  file that can be downloaded to your device. This allows you to preserve
+  your work across browser sessions.
+
+EXAMPLES:
+  save-session            Export all in-memory files
+
+HOW IT WORKS:
+  1. All files in virtual filesystem are collected
+  2. They are bundled into a JSON format
+  3. File is downloaded with timestamp in filename
+  4. You can later restore this session with 'load-session'
+
+OUTPUT FILE:
+  - Filename: session_YYYY-MM-DD_HH-MM-SS.json
+  - Format: JSON with version and file paths/contents
+  - Contains only in-memory files, not static content
+
+NOTES:
+  - Useful for preserving work between sessions
+  - Only exports user-created files, not site content
+  - Can be loaded back with 'load-session' command
+  - Consider saving regularly to avoid losing work

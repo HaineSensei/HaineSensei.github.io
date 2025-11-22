@@ -1,0 +1,19 @@
+cat - Display file contents
+
+USAGE:
+  cat FILE
+
+DESCRIPTION:
+  Displays the contents of a file. Works with both static content files
+  and user-created files in the virtual filesystem.
+
+EXAMPLES:
+  cat about.txt           Display about.txt in current directory
+  cat blog/post.md        Display post.md in blog subdirectory
+  cat /contact.txt        Display contact.txt using absolute path
+
+NOTES:
+  - Static content files are fetched from the server when first accessed
+  - User-created files (via 'edit') are stored in browser memory
+  - The file must exist in the filesystem
+  - Use 'ls' to see available files in a directory

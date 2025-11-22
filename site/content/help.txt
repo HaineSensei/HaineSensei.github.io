@@ -1,18 +1,22 @@
 Available commands:
 
-Navigation:  
+Navigation:
   ls, cd, pwd, cat
 
-Content:  
+Content:
   help, about, contact, pretty
 
-File Operations:  
+File Operations:
   edit, save, load, rm, mkdir, rmdir
 
-Session:  
+Session:
   save-session, load-session
 
-Other:  
-  clear, hello, info, fib
+Other:
+  clear, hello, info, fib, echo
+
+For help on a specific command:
+  help <command>        Show brief help for a command
+  help -v <command>     Show detailed help with examples
 
 Type 'help -v' for detailed usage information.

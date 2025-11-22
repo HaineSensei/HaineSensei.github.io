@@ -1,0 +1,20 @@
+rmdir - Remove directory
+
+USAGE:
+  rmdir DIRECTORY
+
+DESCRIPTION:
+  Removes an empty directory from the virtual filesystem.
+  The directory must be empty before it can be removed.
+
+EXAMPLES:
+  rmdir notes             Remove 'notes' directory from current location
+  rmdir blog/drafts       Remove 'drafts' subdirectory from blog
+  rmdir /olddir           Remove 'olddir' from root
+
+NOTES:
+  - Only removes directories from virtual filesystem (browser memory)
+  - Directory must be empty (no files or subdirectories)
+  - Use 'rm' to remove files before removing a directory
+  - Cannot remove static content directories
+  - There is no undo - the directory is permanently removed from memory

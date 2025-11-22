@@ -1,0 +1,20 @@
+rm - Remove file
+
+USAGE:
+  rm FILE
+
+DESCRIPTION:
+  Removes a file from the virtual filesystem. Only works with in-memory
+  files (user-created files), not static content files.
+
+EXAMPLES:
+  rm notes.txt            Remove notes.txt from current directory
+  rm blog/draft.md        Remove draft.md from blog directory
+  rm /oldfile.txt         Remove oldfile.txt from root
+
+NOTES:
+  - Only removes files from virtual filesystem (browser memory)
+  - Cannot remove static content files from the server
+  - Cannot remove directories (use 'rmdir' for that)
+  - There is no undo - the file is permanently removed from memory
+  - This does not affect saved files on your device

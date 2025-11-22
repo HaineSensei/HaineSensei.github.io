@@ -1,0 +1,24 @@
+load-session - Import session from file
+
+USAGE:
+  load-session
+
+DESCRIPTION:
+  Imports a previously saved session file, restoring all files that were
+  in your virtual filesystem when the session was saved.
+
+EXAMPLES:
+  load-session            Import a session file
+
+HOW IT WORKS:
+  1. File picker dialog appears
+  2. Select a previously saved session JSON file
+  3. All files from that session are loaded into memory
+  4. Files are now accessible in the virtual filesystem
+
+NOTES:
+  - Only accepts valid session JSON files (created by 'save-session')
+  - Checks file version for compatibility
+  - Files are loaded into the paths they had when saved
+  - Existing files with same paths will be overwritten
+  - Use after page reload to restore your previous work

@@ -1,0 +1,1 @@
+Display information about the WASM module.

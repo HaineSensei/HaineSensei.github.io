@@ -1,4 +1,4 @@
-use crate::{commands::{Command, CommandData, command_data}, filesystem::{file_paths::{HELP_FILE_PATH, HELP_VERBOSE_FILE_PATH}, helpers::get_file_content, DirPath, FilePath}};
+use crate::{commands::{Command, CommandData, command_data}, filesystem::{DirPath, FilePath, NextDir, file_paths::{HELP_FILE_PATH, HELP_VERBOSE_FILE_PATH, SIMPLE_MANUAL_DIR_PATH, VERBOSE_MANUAL_DIR_PATH}, helpers::get_file_content}};
 
 pub struct Help;
 
@@ -21,7 +21,7 @@ impl Command for Help {
                 true
             }
         }).collect::<Vec<_>>();
-        let filepath = match args.get(0) {
+        let mut filepath = match args.get(0) {
             Some(&&command) => {
                 command_data(command).manual(verbose)
             },
@@ -35,7 +35,17 @@ impl Command for Help {
         };
         match get_file_content(&filepath).await {
             Ok(content) => content,
-            Err(_) => "Could not find relevant help page".to_string()
+            Err(_) => {
+                // If could not find verbose, try simple instead.
+                if filepath.dir == *VERBOSE_MANUAL_DIR_PATH {
+                    filepath.dir = SIMPLE_MANUAL_DIR_PATH.clone();
+                    match get_file_content(&filepath).await {
+                        Ok(content) => return content,
+                        Err(_) => {}
+                    }
+                }
+                "Could not find relevant help page".to_string()
+            }
         }
     }
 }

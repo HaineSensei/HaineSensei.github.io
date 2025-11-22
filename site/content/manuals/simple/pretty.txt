@@ -1,0 +1,1 @@
+Render a markdown file with LaTeX support in a new tab.
