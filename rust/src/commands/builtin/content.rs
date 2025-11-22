@@ -31,6 +31,8 @@ impl Command for Help {
             return out.trim().to_string()
         }
 
+        // Main handling
+
         // Check for -v flag
         let mut verbose = false;
         let args = args.iter().filter(|&&x|{
