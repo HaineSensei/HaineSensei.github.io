@@ -9,6 +9,25 @@ impl CommandData for Help {
 impl Command for Help {
 
     async fn execute(&self, args: &[&str]) -> String {
+        // Silly help handling
+        let mut special = true;
+        let mut help_count = 0;
+        let mut verbose = false;
+        args.iter().map(|&arg| {
+            match arg {
+                "help" => {help_count += 1},
+                "-v" => {verbose = true},
+                _ => {special = false}
+            }
+        }).for_each(drop);
+        if help_count >= 2 && special {
+            let mut out = String::new();
+            for _ in 0..help_count {
+                out.push_str(if verbose {"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"} else {"AAAAAAAAAAAA"})
+            }
+            return out.trim().to_string()
+        }
+
         // Check for -v flag
         let mut verbose = false;
         let args = args.iter().filter(|&&x|{
