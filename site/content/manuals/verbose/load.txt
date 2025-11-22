@@ -1,0 +1,26 @@
+load - Upload file to virtual filesystem
+
+USAGE:
+  load FILENAME
+
+DESCRIPTION:
+  Uploads a file from your device into the virtual filesystem at the
+  current directory location with the specified filename.
+
+EXAMPLES:
+  load notes.txt          Upload file as notes.txt in current directory
+  load draft.md           Upload file as draft.md
+
+HOW IT WORKS:
+  1. You run the command with desired filename
+  2. File picker dialog appears
+  3. Select a file from your device
+  4. File is uploaded to virtual filesystem with given name
+  5. File is now accessible via 'cat', 'edit', etc.
+
+NOTES:
+  - File is uploaded to your current working directory
+  - The filename you specify doesn't have to match the original filename
+  - Files are stored in browser memory
+  - Use 'save' to download files back to your device
+  - Files persist until page reload (unless saved via 'save-session')

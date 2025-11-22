@@ -1,0 +1,16 @@
+clear - Clear terminal output
+
+USAGE:
+  clear
+
+DESCRIPTION:
+  Clears all output from the terminal display, giving you a fresh screen.
+
+EXAMPLES:
+  clear           Clear the terminal
+
+NOTES:
+  - This only clears the visual display
+  - Your command history is not affected
+  - Files and directories remain unchanged
+  - Useful when the terminal gets cluttered

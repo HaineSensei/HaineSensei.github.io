@@ -1,0 +1,26 @@
+cd - Change directory
+
+USAGE:
+  cd DIRECTORY
+
+DESCRIPTION:
+  Changes the current working directory to the specified location.
+  Supports both absolute and relative paths.
+
+SPECIAL PATHS:
+  .               Current directory (no change)
+  ..              Parent directory
+  /               Root directory
+  /path/to/dir    Absolute path from root
+  path/to/dir     Relative path from current location
+
+EXAMPLES:
+  cd blog         Change to 'blog' subdirectory
+  cd /            Change to root directory
+  cd ..           Move up one level to parent directory
+  cd /blog        Change to /blog using absolute path
+
+NOTES:
+  - You cannot cd into files, only directories
+  - Use 'pwd' to see your current location
+  - Use 'ls' to see available directories

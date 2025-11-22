@@ -1,0 +1,19 @@
+mkdir - Create directory
+
+USAGE:
+  mkdir DIRECTORY
+
+DESCRIPTION:
+  Creates a new directory in the virtual filesystem.
+
+EXAMPLES:
+  mkdir notes             Create 'notes' directory in current location
+  mkdir blog/drafts       Create 'drafts' subdirectory in blog
+  mkdir /projects         Create 'projects' directory in root
+
+NOTES:
+  - Creates directory in the virtual filesystem (browser memory)
+  - Directory persists until page reload (unless saved via session)
+  - Use 'ls' to verify the directory was created
+  - Use 'cd' to navigate into the new directory
+  - Cannot create nested directories in one command

@@ -1,0 +1,1 @@
+Remove an empty directory from the virtual filesystem.

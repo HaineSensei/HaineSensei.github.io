@@ -1,0 +1,24 @@
+save - Download file to device
+
+USAGE:
+  save FILE
+
+DESCRIPTION:
+  Downloads a file from the virtual filesystem to your device.
+  Only works with files that exist in memory (user-created files).
+
+EXAMPLES:
+  save notes.txt          Download notes.txt
+  save blog/draft.md      Download draft.md from blog directory
+  save /myfile.txt        Download myfile.txt from root
+
+HOW IT WORKS:
+  1. The file content is retrieved from virtual filesystem
+  2. Your browser's download dialog appears
+  3. You can choose where to save the file on your device
+
+NOTES:
+  - Only works with in-memory files (created via 'edit' or 'load')
+  - Cannot save static content files (use browser's save feature instead)
+  - The file remains in the virtual filesystem after saving
+  - For backing up multiple files, use 'save-session' instead

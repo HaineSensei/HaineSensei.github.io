@@ -1,0 +1,27 @@
+edit - Edit or create a file
+
+USAGE:
+  edit FILE
+
+DESCRIPTION:
+  Opens a file editor in a new browser tab. If the file exists, it will be
+  loaded for editing. If it doesn't exist, a new file will be created.
+
+EXAMPLES:
+  edit notes.txt          Edit or create notes.txt
+  edit blog/draft.md      Edit draft.md in blog directory
+  edit /myfile.txt        Edit myfile.txt in root directory
+
+HOW IT WORKS:
+  1. A new tab opens with a text editor
+  2. Edit your content in the editor
+  3. Click "Save and Close" to save changes
+  4. The tab closes and returns to the terminal
+  5. The file is now in the virtual filesystem
+
+NOTES:
+  - Files are stored in browser memory until saved to disk
+  - Use 'save' command to download files to your device
+  - Use 'save-session' to backup all your work
+  - Supports both absolute and relative paths
+  - Works with any text-based file (.txt, .md, .kh, etc.)

@@ -1,0 +1,1 @@
+Export all in-memory files as a JSON session file.

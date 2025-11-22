@@ -1,0 +1,1 @@
+Display a greeting message from the Rust/WASM module.

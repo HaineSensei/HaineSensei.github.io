@@ -1,0 +1,19 @@
+ls - List directory contents
+
+USAGE:
+  ls [DIRECTORY]
+
+DESCRIPTION:
+  Lists files and directories in the current directory or a specified directory.
+  Shows both static content files and in-memory files from the virtual filesystem.
+
+EXAMPLES:
+  ls              List contents of current directory
+  ls blog         List contents of the 'blog' directory
+  ls /            List contents of root directory
+  ls ..           List contents of parent directory
+
+NOTES:
+  - Directories are shown without extensions
+  - Files include their extensions (.txt, .md, etc.)
+  - The listing includes both server content and user-created files
