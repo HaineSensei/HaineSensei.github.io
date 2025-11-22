@@ -1,4 +1,4 @@
-use crate::{commands::{Command, CommandData, command_data}, filesystem::{DirPath, FilePath, NextDir, file_paths::{HELP_FILE_PATH, HELP_VERBOSE_FILE_PATH, SIMPLE_MANUAL_DIR_PATH, VERBOSE_MANUAL_DIR_PATH}, helpers::get_file_content}};
+use crate::{commands::{Command, CommandData, command_data}, filesystem::{DirPath, FilePath, file_paths::{HELP_FILE_PATH, HELP_VERBOSE_FILE_PATH, SIMPLE_MANUAL_DIR_PATH, VERBOSE_MANUAL_DIR_PATH}, helpers::get_file_content}};
 
 pub struct Help;
 
@@ -23,7 +23,10 @@ impl Command for Help {
         if help_count >= 2 && special {
             let mut out = String::new();
             for _ in 0..help_count {
-                out.push_str(if verbose {"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"} else {"AAAAAAAAAAAA"})
+                let multiplier = if verbose {24} else {8};
+                for _ in 0..multiplier {
+                    out.push_str("A\u{200B}");
+                }
             }
             return out.trim().to_string()
         }
