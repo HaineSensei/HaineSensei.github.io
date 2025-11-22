@@ -12,6 +12,7 @@ use filesystem::{Manifest, DirPath, FilePath, VIRTUAL_FS};
 use filesystem::helpers::fetch_text;
 use channels::{handle_editor_message, handle_pretty_message, EDITOR_CHANNEL, PRETTY_CHANNEL};
 use commands::process_command;
+use commands::builtin::pretty::open_pretty_page;
 
 // Handler for next input - determines what function receives the next user input
 #[derive(Clone)]
@@ -183,20 +184,6 @@ pub fn import_session(session_json: String) -> String {
             format!("Imported {} file(s)", count)
         }
         Err(e) => format!("Error: Failed to parse session file: {}", e),
-    }
-}
-
-// Helper to open pretty page in new tab
-fn open_pretty_page(file_path: &str, path_arg: &str) -> String {
-    let url = format!("./pretty.html?content={}", file_path);
-
-    if let Some(window) = web_sys::window() {
-        match window.open_with_url_and_target(&url, "_blank") {
-            Ok(_) => format!("Opening {} in new tab...", path_arg),
-            Err(_) => "Error: Failed to open new tab. Please check your browser's popup settings.".to_string()
-        }
-    } else {
-        "Error: Could not access window object".to_string()
     }
 }
 

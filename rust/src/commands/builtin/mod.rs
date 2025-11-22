@@ -1,6 +1,11 @@
-// Future: individual command implementations will go here
-// pub mod filesystem;  // Cd, Ls, Pwd, Cat, Mkdir, Rmdir, Rm
-// pub mod content;     // Help, About, Contact
-// pub mod files;       // Edit, Load, Save, SaveSession, LoadSession
-// pub mod pretty;      // Pretty command
-// pub mod misc;        // Hello, Info, Fib, Echo, Secret
+pub mod filesystem;
+pub mod content;
+pub mod files;
+pub mod pretty;
+pub mod misc;
+
+pub use filesystem::*;
+pub use content::*;
+pub use files::*;
+pub use pretty::*;
+pub use misc::*;

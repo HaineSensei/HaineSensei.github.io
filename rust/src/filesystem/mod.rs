@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 
+pub mod file_paths;
 pub mod types;
 pub mod virtual_fs;
 pub mod helpers;
