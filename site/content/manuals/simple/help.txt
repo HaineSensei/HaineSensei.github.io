@@ -1,1 +1,1 @@
-Show help information. Use 'help <command>' for command-specific help.
+Show help information. Use 'help COMMAND' for command-specific help.
