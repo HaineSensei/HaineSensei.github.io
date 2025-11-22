@@ -7,7 +7,7 @@ Navigation:
   cat FILE       - Display file contents (supports relative and absolute paths)
 
 Content:
-  help [-v]      - Show a help message (-v for verbose)
+  help [-v] [COMMAND]  - Show a help message (-v for verbose)
   about          - About this site
   contact        - Contact information
   pretty FILE    - Render markdown with LaTeX support in new tab
@@ -32,8 +32,8 @@ Other:
   echo TEXT      - Echo back the provided text
 
 Getting Help:
-  help <command>        Show brief help for a specific command
-  help -v <command>     Show detailed help with examples
+  help COMMAND        Show brief help for a specific command
+  help -v COMMAND     Show detailed help with examples
 
   Examples:
     help ls             Brief help for ls

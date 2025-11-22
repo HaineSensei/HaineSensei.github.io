@@ -16,7 +16,7 @@ Other:
   clear, hello, info, fib, echo
 
 For help on a specific command:
-  help <command>        Show brief help for a command
-  help -v <command>     Show detailed help with examples
+  help COMMAND        Show brief help for a command
+  help -v COMMAND     Show detailed help with examples
 
 Type 'help -v' for detailed usage information.

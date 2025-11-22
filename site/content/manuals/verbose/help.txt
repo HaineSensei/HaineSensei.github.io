@@ -17,6 +17,6 @@ EXAMPLES:
 
 NOTES:
   - Use 'help' alone to see all available commands
-  - Use 'help <command>' to learn about a specific command
+  - Use 'help COMMAND' to learn about a specific command
   - Add -v flag for more detailed information and examples
   - Not all commands have verbose manuals (simple ones only have brief help)
