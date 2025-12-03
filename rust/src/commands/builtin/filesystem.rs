@@ -23,7 +23,7 @@ impl Command for Ls {
             let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
             // Check if directory exists
-            if !dir_exists(&new_path) {
+            if !dir_exists(&new_path).await {
                 return format!("ls: {}: No such directory", target);
             }
 
@@ -33,7 +33,7 @@ impl Command for Ls {
             CURRENT_DIR.with(|cd| cd.borrow().clone())
         };
 
-        let entries = list_directory(&target_dir);
+        let entries = list_directory(&target_dir).await;
 
         if entries.is_empty() {
             "(empty directory)".to_string()
@@ -61,7 +61,7 @@ impl Command for Cd {
         let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
         // Check if directory exists
-        if dir_exists(&new_path) {
+        if dir_exists(&new_path).await {
             CURRENT_DIR.with(|cd| {
                 *cd.borrow_mut() = new_path;
             });

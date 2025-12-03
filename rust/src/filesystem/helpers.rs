@@ -1,6 +1,8 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
+use crate::filesystem::{CURRENT_DIR, NextDir, ABYSS_FS};
+
 use super::types::{DirPath, FilePath, Content};
 use super::VIRTUAL_FS;
 
@@ -35,6 +37,7 @@ pub async fn fetch_text(url: &str) -> Result<String, String> {
 }
 
 // Get file content (fetch if needed)
+// TODO: Add Abyss handling.
 pub async fn get_file_content(filepath: &FilePath) -> Result<String, String> {
     let content_type = VIRTUAL_FS.with(|vfs| {
         vfs.borrow().get_content(filepath).cloned()
@@ -54,29 +57,111 @@ pub fn get_current_dir_string() -> String {
     super::CURRENT_DIR.with(|cd| cd.borrow().to_string())
 }
 
-// Helper to check if a directory exists in virtual filesystem
-pub fn dir_exists(path: &DirPath) -> bool {
-    VIRTUAL_FS.with(|vfs| {
-        vfs.borrow().dir_exists(path)
-    })
+// Helper to check if a directory exists in virtual filesystem or abyss
+pub async fn dir_exists(path: &DirPath) -> bool {
+    if path_in_abyss(path) {
+        // Get parent path and directory name
+        let path_vec = &path.0;
+        if path_vec.is_empty() {
+            return false;
+        }
+
+        // Build parent path (all but last component)
+        let parent = DirPath(path_vec[..path_vec.len()-1].to_vec());
+
+        // Get directory name (last component)
+        let dir_name = match path_vec.last() {
+            Some(NextDir::In(name)) => name,
+            _ => return false,
+        };
+
+        // Check cache synchronously
+        let cached_dirs = ABYSS_FS.with(|afs| afs.borrow().dirs.get(&parent).cloned());
+
+        // Fetch static directories
+        let mut directories = super::abyss::Directories::from_file(
+            &fetch_text(&format!("{}/!!directories.txt", parent.to_string())).await.unwrap()
+        );
+
+        // Merge with cached user additions
+        if let Some(delta) = cached_dirs {
+            directories.extend(&delta);
+        }
+
+        directories.0.contains(dir_name)
+    } else {
+        VIRTUAL_FS.with(|vfs| {
+            vfs.borrow().dir_exists(path)
+        })
+    }
 }
 
 // List files and directories in current directory
-pub fn list_directory(path: &DirPath) -> Vec<String> {
-    VIRTUAL_FS.with(|vfs| {
-        let vfs_ref = vfs.borrow();
+pub async fn list_directory(path: &DirPath) -> Vec<String> {
+    if path_in_abyss(path) {
+        // Handle abyss directories
+        // Check cache synchronously
+        let cached_contents = ABYSS_FS.with(|afs| afs.borrow().files.get(path).cloned());
+        let cached_dirs = ABYSS_FS.with(|afs| afs.borrow().dirs.get(path).cloned());
+
+        // Fetch static content if not cached
+        let mut contents = super::abyss::Contents::from_file(
+            &fetch_text(&format!("{}/!!contents.txt", path.to_string())).await.unwrap()
+        );
+        let mut directories = super::abyss::Directories::from_file(
+            &fetch_text(&format!("{}/!!directories.txt", path.to_string())).await.unwrap()
+        );
+
+        // Merge with cached user additions
+        if let Some(delta) = cached_contents {
+            contents.extend(delta);
+        }
+        if let Some(delta) = cached_dirs {
+            directories.extend(&delta);
+        }
+
         let mut entries = Vec::new();
 
-        // Add subdirectories with trailing /
-        let subdirs = vfs_ref.list_subdirs_in_dir(path);
-        for subdir in subdirs {
-            entries.push(format!("{}/", subdir));
+        // Add directories with trailing /
+        for dir_name in directories.0 {
+            entries.push(format!("{}/", dir_name));
         }
 
         // Add files
-        entries.extend(vfs_ref.list_files_in_dir(path));
+        entries.extend(contents.0.keys().cloned());
 
         entries.sort();
         entries
-    })
+    } else {
+        // Handle regular virtual filesystem
+        VIRTUAL_FS.with(|vfs| {
+            let vfs_ref = vfs.borrow();
+            let mut entries = Vec::new();
+
+            // Add subdirectories with trailing /
+            let subdirs = vfs_ref.list_subdirs_in_dir(path);
+            for subdir in subdirs {
+                entries.push(format!("{}/", subdir));
+            }
+
+            // Add files
+            entries.extend(vfs_ref.list_files_in_dir(path));
+
+            entries.sort();
+            entries
+        })
+    }
+}
+
+pub fn in_abyss() -> bool {
+    CURRENT_DIR.with(|dir|
+        path_in_abyss(&dir.borrow())
+    )
+}
+
+pub fn path_in_abyss(path: &DirPath) -> bool {
+    match path.0.first() {
+        Some(NextDir::In(x)) if x == "abyss" => true,
+        _ => false
+    }
 }
