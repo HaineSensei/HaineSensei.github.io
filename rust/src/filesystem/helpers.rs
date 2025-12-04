@@ -37,18 +37,24 @@ pub async fn fetch_text(url: &str) -> Result<String, String> {
 }
 
 // Get file content (fetch if needed)
-// TODO: Add Abyss handling.
 pub async fn get_file_content(filepath: &FilePath) -> Result<String, String> {
-    let content_type = VIRTUAL_FS.with(|vfs| {
-        vfs.borrow().get_content(filepath).cloned()
-    });
+    if path_in_abyss(&filepath.dir) {
+        // Handle abyss files
+        // TODO: use helper to get_or_fetch_contents(&filepath.dir)
+        todo!("Implement get_or_fetch_contents helper")
+    } else {
+        // Handle regular virtual filesystem
+        let content_type = VIRTUAL_FS.with(|vfs| {
+            vfs.borrow().get_content(filepath).cloned()
+        });
 
-    match content_type {
-        Some(Content::InMemory(content)) => Ok(content),
-        Some(Content::ToFetch) => {
-            fetch_text(&filepath.to_url()).await
+        match content_type {
+            Some(Content::InMemory(content)) => Ok(content),
+            Some(Content::ToFetch) => {
+                fetch_text(&filepath.to_url()).await
+            }
+            None => Err(format!("{}: No such file", filepath.to_string())),
         }
-        None => Err(format!("{}: No such file", filepath.to_string())),
     }
 }
 
@@ -60,11 +66,7 @@ pub fn get_current_dir_string() -> String {
 // Helper to check if a directory exists in virtual filesystem or abyss
 pub async fn dir_exists(path: &DirPath) -> bool {
     if path_in_abyss(path) {
-        // Get parent path and directory name
         let path_vec = &path.0;
-        if path_vec.is_empty() {
-            return false;
-        }
 
         // Build parent path (all but last component)
         let parent = DirPath(path_vec[..path_vec.len()-1].to_vec());
@@ -75,20 +77,8 @@ pub async fn dir_exists(path: &DirPath) -> bool {
             _ => return false,
         };
 
-        // Check cache synchronously
-        let cached_dirs = ABYSS_FS.with(|afs| afs.borrow().dirs.get(&parent).cloned());
-
-        // Fetch static directories
-        let mut directories = super::abyss::Directories::from_file(
-            &fetch_text(&format!("{}/!!directories.txt", parent.to_string())).await.unwrap()
-        );
-
-        // Merge with cached user additions
-        if let Some(delta) = cached_dirs {
-            directories.extend(&delta);
-        }
-
-        directories.0.contains(dir_name)
+        // TODO: use helper to get_or_fetch_directories(&parent)
+        todo!("Implement get_or_fetch_directories helper")
     } else {
         VIRTUAL_FS.with(|vfs| {
             vfs.borrow().dir_exists(path)
@@ -100,38 +90,8 @@ pub async fn dir_exists(path: &DirPath) -> bool {
 pub async fn list_directory(path: &DirPath) -> Vec<String> {
     if path_in_abyss(path) {
         // Handle abyss directories
-        // Check cache synchronously
-        let cached_contents = ABYSS_FS.with(|afs| afs.borrow().files.get(path).cloned());
-        let cached_dirs = ABYSS_FS.with(|afs| afs.borrow().dirs.get(path).cloned());
-
-        // Fetch static content if not cached
-        let mut contents = super::abyss::Contents::from_file(
-            &fetch_text(&format!("{}/!!contents.txt", path.to_string())).await.unwrap()
-        );
-        let mut directories = super::abyss::Directories::from_file(
-            &fetch_text(&format!("{}/!!directories.txt", path.to_string())).await.unwrap()
-        );
-
-        // Merge with cached user additions
-        if let Some(delta) = cached_contents {
-            contents.extend(delta);
-        }
-        if let Some(delta) = cached_dirs {
-            directories.extend(&delta);
-        }
-
-        let mut entries = Vec::new();
-
-        // Add directories with trailing /
-        for dir_name in directories.0 {
-            entries.push(format!("{}/", dir_name));
-        }
-
-        // Add files
-        entries.extend(contents.0.keys().cloned());
-
-        entries.sort();
-        entries
+        // TODO: implement this
+        todo!()
     } else {
         // Handle regular virtual filesystem
         VIRTUAL_FS.with(|vfs| {

@@ -67,6 +67,8 @@ impl AbyssFileSystem {
         }
     }
 
+    // TODO: Fix with new semantics of abyss file system
+    // (check cache, return if found, otherwise fetch)
     pub async fn get_contents(&self, dirpath: &DirPath) -> Contents {
         let mut fetched = Contents::from_file(
                     &fetch_text(
@@ -81,6 +83,8 @@ impl AbyssFileSystem {
         fetched
     }
 
+    // TODO: Fix with new semantics of abyss file system
+    // (check cache, return if found, otherwise fetch)
     pub async fn get_directories(&self, dirpath: &DirPath) -> Directories {
         let mut fetched = Directories::from_file(
                     &fetch_text(
