@@ -1,6 +1,6 @@
 use crate::commands::{Command, CommandData};
-use crate::filesystem::{DirPath, FilePath, CURRENT_DIR, VIRTUAL_FS, ABYSS_FS, Contents, Directories, NextDir};
-use crate::filesystem::helpers::{get_current_dir_string, get_file_content, dir_exists, list_directory, path_in_abyss};
+use crate::filesystem::{DirPath, FilePath, CURRENT_DIR, VIRTUAL_FS};
+use crate::filesystem::helpers::{get_current_dir_string, get_file_content, dir_exists, list_directory, path_in_abyss, remove_file_abyss, remove_dir_abyss, create_dir_abyss};
 
 pub struct Pwd;
 impl CommandData for Pwd {
@@ -107,8 +107,10 @@ impl Command for Rm {
 
         if path_in_abyss(&filepath.dir) {
             // Handle abyss files
-            // TODO: get_or_fetch_contents, modify, cache back
-            todo!("Implement rm for abyss files")
+            match remove_file_abyss(&filepath).await {
+                Ok(_) => String::new(),
+                Err(_) => format!("rm: {}: No such file", path_arg)
+            }
         } else {
             // Handle regular virtual filesystem
             VIRTUAL_FS.with(|vfs| {
@@ -128,6 +130,10 @@ impl CommandData for Mkdir {
 }
 impl Command for Mkdir {
     async fn execute(&self, args: &[&str]) -> String {
+        // TODO: ensure this works for the edge case where we have removed 
+        // the entire abyss and are making a new abyss. 
+        // (low priority)
+
         if args.is_empty() {
             return "Usage: mkdir <directory>".to_string();
         }
@@ -142,45 +148,18 @@ impl Command for Mkdir {
 
         if path_in_abyss(&new_path) {
             // Handle abyss directories
-
-            // Unnecessary: Abyss directories start with /abyss/
-            let path_vec = &new_path.0;
-            if path_vec.is_empty() {
-                return format!("mkdir: Invalid path");
+            // Check parent exists
+            if let Some(parent) = new_path.super_dir() {
+                if !dir_exists(&parent).await {
+                    return format!("mkdir: {}: Parent directory does not exist", dir_arg);
+                }
             }
 
-            // Get parent path and directory name
-            let parent = DirPath(path_vec[..path_vec.len()-1].to_vec());
-            let dir_name = match path_vec.last() {
-                Some(NextDir::In(name)) => name.clone(),
-                _ => return format!("mkdir: Invalid path"),
-            };
-
-            ABYSS_FS.with(|afs| {
-                let mut afs_mut = afs.borrow_mut();
-
-                // Add to parent's directories
-
-                // assumes parent directory exists without checking 
-                // (should only work if it does exist)
-
-                // Might not work for the directory /abyss/
-                // if the user has deleted the full abyss.
-                // Need to consider the details of how ABYSS_FS 
-                // is structured at root:
-                // Parent of /abyss/ is / which is not in abyss, 
-                // so no entry in ABYSS_FS.
-                let mut parent_dirs = afs_mut.dirs.get(&parent).cloned().unwrap_or_else(|| Directories::new());
-                parent_dirs.0.insert(dir_name);
-                afs_mut.dirs.insert(parent.clone(), parent_dirs);
-
-                // Initialize empty Contents and Directories for new directory
-                afs_mut.files.insert(new_path.clone(), Contents::new());
-                afs_mut.dirs.insert(new_path, Directories::new());
-            });
-
-            String::new()
-        } else {
+            match create_dir_abyss(&new_path).await {
+                Ok(_) => String::new(),
+                Err(e) => format!("mkdir: {}: {}", dir_arg, e)
+            }
+        } else{
             // Handle regular virtual filesystem
             VIRTUAL_FS.with(|vfs| {
                 let mut vfs_mut = vfs.borrow_mut();
@@ -210,8 +189,15 @@ impl Command for Rmdir {
 
         if path_in_abyss(&target_path) {
             // Handle abyss directories
-            // TODO: get_or_fetch contents/directories, check empty, remove from parent, remove entries
-            todo!("Implement rmdir for abyss directories")
+            // Check if directory exists first
+            if !dir_exists(&target_path).await {
+                return format!("rmdir: {}: No such directory", dir_arg);
+            }
+
+            match remove_dir_abyss(&target_path).await {
+                Ok(_) => String::new(),
+                Err(e) => format!("rmdir: {}: {}", dir_arg, e)
+            }
         } else {
             // Handle regular virtual filesystem
             VIRTUAL_FS.with(|vfs| {

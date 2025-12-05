@@ -1,6 +1,6 @@
 use crate::commands::{Command, CommandData, export_session, import_session};
 use crate::filesystem::{CURRENT_DIR, FilePath, VIRTUAL_FS};
-use crate::filesystem::helpers::get_file_content;
+use crate::filesystem::helpers::{get_file_content, path_in_abyss, write_file_abyss};
 use crate::js_interop::{prompt_file_picker, trigger_download};
 use wasm_bindgen_futures::JsFuture;
 use js_sys::{Uint8Array, Date};
@@ -56,11 +56,18 @@ impl Command for Load {
                 // Interpret as UTF-8 string
                 match String::from_utf8(bytes) {
                     Ok(content) => {
-                        // Write to virtual filesystem
                         let filepath = CURRENT_DIR.with(|cd| FilePath::parse(&target_filename, &cd.borrow()));
-                        VIRTUAL_FS.with(|vfs| {
-                            vfs.borrow_mut().write_file(&filepath, content);
-                        });
+
+                        if path_in_abyss(&filepath.dir) {
+                            // Handle abyss files
+                            write_file_abyss(&filepath, content).await;
+                        } else {
+                            // Handle regular virtual filesystem
+                            VIRTUAL_FS.with(|vfs| {
+                                vfs.borrow_mut().write_file(&filepath, content);
+                            });
+                        }
+
                         format!("Loaded file into: {}", target_filename)
                     }
                     Err(_) => "Error: File is not valid UTF-8 text".to_string(),

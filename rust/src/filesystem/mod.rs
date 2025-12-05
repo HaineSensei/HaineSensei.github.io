@@ -8,7 +8,7 @@ pub mod abyss;
 
 pub use types::{Manifest, Content, NextDir, DirPath, FilePath};
 pub use virtual_fs::VirtualFilesystem;
-pub use abyss::{AbyssFileSystem, Contents, Directories};
+pub use abyss::{AbyssFileSystem, Contents, Directories, NeedsFetch};
 
 // Thread-local storage for current directory and virtual filesystem
 thread_local! {

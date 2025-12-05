@@ -1,7 +1,7 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response};
-use crate::filesystem::{CURRENT_DIR, NextDir, ABYSS_FS};
+use crate::filesystem::{ABYSS_FS, CURRENT_DIR, Contents, Directories, NextDir};
 
 use super::types::{DirPath, FilePath, Content};
 use super::VIRTUAL_FS;
@@ -36,26 +36,19 @@ pub async fn fetch_text(url: &str) -> Result<String, String> {
     text.as_string().ok_or_else(|| "Response text is not a string".to_string())
 }
 
+// Read content from a Content variant
+async fn read_content_at(content: Option<&Content>, filepath: &FilePath) -> Result<String, String> {
+    match content {
+        Some(Content::InMemory(text)) => Ok(text.clone()),
+        Some(Content::ToFetch) => fetch_text(&filepath.to_url()).await,
+        None => Err(format!("{}: No such file", filepath.to_string())),
+    }
+}
+
 // Get file content (fetch if needed)
 pub async fn get_file_content(filepath: &FilePath) -> Result<String, String> {
-    if path_in_abyss(&filepath.dir) {
-        // Handle abyss files
-        // TODO: use helper to get_or_fetch_contents(&filepath.dir)
-        todo!("Implement get_or_fetch_contents helper")
-    } else {
-        // Handle regular virtual filesystem
-        let content_type = VIRTUAL_FS.with(|vfs| {
-            vfs.borrow().get_content(filepath).cloned()
-        });
-
-        match content_type {
-            Some(Content::InMemory(content)) => Ok(content),
-            Some(Content::ToFetch) => {
-                fetch_text(&filepath.to_url()).await
-            }
-            None => Err(format!("{}: No such file", filepath.to_string())),
-        }
-    }
+    let contents = get_contents(&filepath.dir).await;
+    read_content_at(contents.get(&filepath.file), filepath).await
 }
 
 // Helper to get current directory path as string
@@ -65,52 +58,39 @@ pub fn get_current_dir_string() -> String {
 
 // Helper to check if a directory exists in virtual filesystem or abyss
 pub async fn dir_exists(path: &DirPath) -> bool {
-    if path_in_abyss(path) {
-        let path_vec = &path.0;
+    // Root always exists
+    if path.0.is_empty() {
+        return true;
+    }
 
-        // Build parent path (all but last component)
-        let parent = DirPath(path_vec[..path_vec.len()-1].to_vec());
-
-        // Get directory name (last component)
-        let dir_name = match path_vec.last() {
-            Some(NextDir::In(name)) => name,
-            _ => return false,
-        };
-
-        // TODO: use helper to get_or_fetch_directories(&parent)
-        todo!("Implement get_or_fetch_directories helper")
-    } else {
-        VIRTUAL_FS.with(|vfs| {
-            vfs.borrow().dir_exists(path)
-        })
+    // Get parent directory and final component
+    match (path.super_dir(), path.final_component()) {
+        (Some(parent), Some(dirname)) => {
+            let directories = get_directories(&parent).await;
+            directories.contains(dirname)
+        }
+        _ => false, // Invalid path structure
     }
 }
 
 // List files and directories in current directory
 pub async fn list_directory(path: &DirPath) -> Vec<String> {
-    if path_in_abyss(path) {
-        // Handle abyss directories
-        // TODO: implement this
-        todo!()
-    } else {
-        // Handle regular virtual filesystem
-        VIRTUAL_FS.with(|vfs| {
-            let vfs_ref = vfs.borrow();
-            let mut entries = Vec::new();
+    let mut entries = Vec::new();
 
-            // Add subdirectories with trailing /
-            let subdirs = vfs_ref.list_subdirs_in_dir(path);
-            for subdir in subdirs {
-                entries.push(format!("{}/", subdir));
-            }
-
-            // Add files
-            entries.extend(vfs_ref.list_files_in_dir(path));
-
-            entries.sort();
-            entries
-        })
+    // Get directories and add with trailing /
+    let directories = get_directories(path).await;
+    for dir in &directories.0 {
+        entries.push(format!("{}/", dir));
     }
+
+    // Get files
+    let contents = get_contents(path).await;
+    for filename in contents.0.keys() {
+        entries.push(filename.clone());
+    }
+
+    entries.sort();
+    entries
 }
 
 pub fn in_abyss() -> bool {
@@ -123,5 +103,136 @@ pub fn path_in_abyss(path: &DirPath) -> bool {
     match path.0.first() {
         Some(NextDir::In(x)) if x == "abyss" => true,
         _ => false
+    }
+}
+
+// Async helpers for abyss write operations
+
+/// Remove a file from the abyss filesystem
+pub async fn remove_file_abyss(filepath: &FilePath) -> Result<(), String> {
+    // Try cached path first
+    match ABYSS_FS.with_borrow_mut(|afs| afs.sync_remove_file(filepath)) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            // Fetch and retry with data
+            let contents = get_contents(&filepath.dir).await;
+            ABYSS_FS.with_borrow_mut(|afs|
+                afs.sync_remove_file_with_data(filepath, contents)
+            )
+        }
+    }
+}
+
+/// Remove a directory from the abyss filesystem
+pub async fn remove_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
+    // Try cached path first
+    match ABYSS_FS.with_borrow_mut(|afs| afs.sync_remove_dir(dirpath)) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            // Fetch all needed data
+            let contents = get_contents(dirpath).await;
+            let directories = get_directories(dirpath).await;
+            let parent = dirpath.super_dir().ok_or("Invalid path")?;
+            let parent_dirs = get_directories(&parent).await;
+
+            // Retry with data
+            ABYSS_FS.with_borrow_mut(|afs|
+                afs.sync_remove_dir_with_data(dirpath, contents, directories, parent_dirs)
+            )
+        }
+    }
+}
+
+/// Create a directory in the abyss filesystem
+pub async fn create_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
+    // Try cached path first
+    match ABYSS_FS.with_borrow_mut(|afs| afs.sync_create_dir(dirpath)) {
+        Ok(_) => Ok(()),
+        Err(_) => {
+            // Fetch parent directories
+            let parent = dirpath.super_dir().ok_or("Invalid path")?;
+            let parent_dirs = get_directories(&parent).await;
+
+            // Retry with data
+            ABYSS_FS.with_borrow_mut(|afs|
+                afs.sync_create_dir_with_data(dirpath, parent_dirs)
+            )
+        }
+    }
+}
+
+/// Write a file to the abyss filesystem
+pub async fn write_file_abyss(filepath: &FilePath, content: String) {
+    // Try cached path first
+    match ABYSS_FS.with_borrow_mut(|afs| afs.sync_write_file(filepath, content.clone())) {
+        Ok(_) => {},
+        Err(_) => {
+            // Fetch contents
+            let contents = get_contents(&filepath.dir).await;
+
+            // Write with data
+            ABYSS_FS.with_borrow_mut(|afs|
+                afs.sync_write_file_with_data(filepath, contents, content)
+            );
+        }
+    }
+}
+
+// assumes path is valid
+pub async fn get_directories(path: &DirPath) -> Directories {
+    if path_in_abyss(path) {
+        match ABYSS_FS.with_borrow(|afs| 
+            afs.dirs.get(path).cloned()
+        ) {
+            Some(x) => x,
+            None => Directories::from_file(
+                &fetch_text(
+                    &format!("{}/!!directories.txt", path.to_string())
+                ).await.unwrap()
+            )
+        }
+    } else {
+        Directories(
+            VIRTUAL_FS
+            .with_borrow(|vfs| vfs.list_subdirs_in_dir(path))
+            .iter()
+            .cloned()
+            .collect()
+        )
+    }
+}
+
+// Assumes path is valid
+pub async fn get_contents(path: &DirPath) -> Contents {
+    if path_in_abyss(path) {
+        match ABYSS_FS.with_borrow(|afs|
+            afs.files.get(path).cloned()
+        ) {
+            Some(x) => x,
+            None => Contents::from_file(
+                &fetch_text(
+                    &format!("{}/!!contents.txt", path.to_string())
+                ).await.unwrap()
+            )
+        }
+    } else {
+        Contents(
+            VIRTUAL_FS
+            .with_borrow(|vfs| vfs.list_files_in_dir(path))
+            .iter()
+            .map(|file|
+                VIRTUAL_FS.with_borrow(|vfs| 
+                    (
+                        file.clone(),
+                        vfs.get_content(
+                            &FilePath {dir: path.clone(), file: file.clone()}
+                        )
+                        .cloned()
+                        .unwrap()
+                    )
+                )
+            )
+            .collect()
+        )
     }
 }
