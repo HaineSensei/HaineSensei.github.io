@@ -13,10 +13,15 @@ def generate_manifest(content_dir, output_file):
 
     # Walk through content directory
     for item in content_path.rglob('*'):
+        relative = item.relative_to(content_path)
+
+        # Skip anything inside the abyss directory (but keep the abyss dir itself)
+        # The abyss uses runtime discovery via !!contents.txt files
+        if len(relative.parts) > 1 and relative.parts[0] == 'abyss':
+            continue
+
         if item.is_file():
             # Get relative path from content directory
-            relative = item.relative_to(content_path)
-
             # Get directory path (empty string for root)
             if relative.parent == Path('.'):
                 dir_path = ""
@@ -31,6 +36,9 @@ def generate_manifest(content_dir, output_file):
                 "name": item.name,
                 "path": dir_path
             })
+        elif item.is_dir() and relative.parts[0] == 'abyss' and len(relative.parts) == 1:
+            # Add the abyss directory itself to the directory list
+            directories.add('abyss')
 
     # Create manifest structure
     manifest = {

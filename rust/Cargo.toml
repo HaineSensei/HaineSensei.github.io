@@ -25,6 +25,7 @@ features = [
     "Headers",
     "BroadcastChannel",
     "MessageEvent",
+    "console"
 ]
 
 [profile.release]

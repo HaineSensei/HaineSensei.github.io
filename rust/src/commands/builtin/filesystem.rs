@@ -1,6 +1,6 @@
 use crate::commands::{Command, CommandData};
 use crate::filesystem::{DirPath, FilePath, CURRENT_DIR, VIRTUAL_FS};
-use crate::filesystem::helpers::{get_current_dir_string, get_file_content, dir_exists, list_directory};
+use crate::filesystem::helpers::{get_current_dir_string, get_file_content, dir_exists, list_directory, path_in_abyss, remove_file_abyss, remove_dir_abyss, create_dir_abyss};
 
 pub struct Pwd;
 impl CommandData for Pwd {
@@ -23,7 +23,7 @@ impl Command for Ls {
             let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
             // Check if directory exists
-            if !dir_exists(&new_path) {
+            if !dir_exists(&new_path).await {
                 return format!("ls: {}: No such directory", target);
             }
 
@@ -33,7 +33,7 @@ impl Command for Ls {
             CURRENT_DIR.with(|cd| cd.borrow().clone())
         };
 
-        let entries = list_directory(&target_dir);
+        let entries = list_directory(&target_dir).await;
 
         if entries.is_empty() {
             "(empty directory)".to_string()
@@ -61,7 +61,7 @@ impl Command for Cd {
         let new_path = CURRENT_DIR.with(|cd| DirPath::parse(target, &cd.borrow()));
 
         // Check if directory exists
-        if dir_exists(&new_path) {
+        if dir_exists(&new_path).await {
             CURRENT_DIR.with(|cd| {
                 *cd.borrow_mut() = new_path;
             });
@@ -105,13 +105,22 @@ impl Command for Rm {
         let path_arg = args[0];
         let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
-        VIRTUAL_FS.with(|vfs| {
-            if vfs.borrow_mut().remove_file(&filepath) {
-                String::new()
-            } else {
-                format!("rm: {}: No such file", path_arg)
+        if path_in_abyss(&filepath.dir) {
+            // Handle abyss files
+            match remove_file_abyss(&filepath).await {
+                Ok(_) => String::new(),
+                Err(_) => format!("rm: {}: No such file", path_arg)
             }
-        })
+        } else {
+            // Handle regular virtual filesystem
+            VIRTUAL_FS.with(|vfs| {
+                if vfs.borrow_mut().remove_file(&filepath) {
+                    String::new()
+                } else {
+                    format!("rm: {}: No such file", path_arg)
+                }
+            })
+        }
     }
 }
 
@@ -121,6 +130,10 @@ impl CommandData for Mkdir {
 }
 impl Command for Mkdir {
     async fn execute(&self, args: &[&str]) -> String {
+        // TODO: ensure this works for the edge case where we have removed 
+        // the entire abyss and are making a new abyss. 
+        // (low priority)
+
         if args.is_empty() {
             return "Usage: mkdir <directory>".to_string();
         }
@@ -128,15 +141,36 @@ impl Command for Mkdir {
         let dir_arg = args[0];
         let new_path = CURRENT_DIR.with(|cd| DirPath::parse(dir_arg, &cd.borrow()));
 
-        VIRTUAL_FS.with(|vfs| {
-            let mut vfs_mut = vfs.borrow_mut();
-            if vfs_mut.dir_exists(&new_path) {
-                format!("mkdir: {}: Directory already exists", dir_arg)
-            } else {
-                vfs_mut.create_dir(new_path);
-                String::new()
+        // Check if directory already exists
+        if dir_exists(&new_path).await {
+            return format!("mkdir: {}: Directory already exists", dir_arg);
+        }
+
+        if path_in_abyss(&new_path) {
+            // Handle abyss directories
+            // Check parent exists
+            if let Some(parent) = new_path.super_dir() {
+                if !dir_exists(&parent).await {
+                    return format!("mkdir: {}: Parent directory does not exist", dir_arg);
+                }
             }
-        })
+
+            match create_dir_abyss(&new_path).await {
+                Ok(_) => String::new(),
+                Err(e) => format!("mkdir: {}: {}", dir_arg, e)
+            }
+        } else{
+            // Handle regular virtual filesystem
+            VIRTUAL_FS.with(|vfs| {
+                let mut vfs_mut = vfs.borrow_mut();
+                if vfs_mut.dir_exists(&new_path) {
+                    format!("mkdir: {}: Directory already exists", dir_arg)
+                } else {
+                    vfs_mut.create_dir(new_path);
+                    String::new()
+                }
+            })
+        }
     }
 }
 
@@ -153,11 +187,25 @@ impl Command for Rmdir {
         let dir_arg = args[0];
         let target_path = CURRENT_DIR.with(|cd| DirPath::parse(dir_arg, &cd.borrow()));
 
-        VIRTUAL_FS.with(|vfs| {
-            match vfs.borrow_mut().remove_dir(&target_path) {
-                Ok(_) => String::new(),
-                Err(e) => format!("rmdir: {}: {}", dir_arg, e),
+        if path_in_abyss(&target_path) {
+            // Handle abyss directories
+            // Check if directory exists first
+            if !dir_exists(&target_path).await {
+                return format!("rmdir: {}: No such directory", dir_arg);
             }
-        })
+
+            match remove_dir_abyss(&target_path).await {
+                Ok(_) => String::new(),
+                Err(e) => format!("rmdir: {}: {}", dir_arg, e)
+            }
+        } else {
+            // Handle regular virtual filesystem
+            VIRTUAL_FS.with(|vfs| {
+                match vfs.borrow_mut().remove_dir(&target_path) {
+                    Ok(_) => String::new(),
+                    Err(e) => format!("rmdir: {}: {}", dir_arg, e),
+                }
+            })
+        }
     }
 }

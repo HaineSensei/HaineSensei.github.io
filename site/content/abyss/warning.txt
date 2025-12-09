@@ -1,0 +1,5 @@
+You stand at the edge of the abyss.
+
+It goes deeper than you might expect.
+
+(Use 'cd level1' to descend)

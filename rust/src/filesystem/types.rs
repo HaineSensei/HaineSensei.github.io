@@ -206,6 +206,25 @@ impl DirPath {
 
         new_path
     }
+
+    // Get parent directory
+    pub fn super_dir(&self) -> Option<Self> {
+        if self.0.is_empty() {
+            // Already at root
+            None
+        } else {
+            // Remove last component
+            Some(DirPath(self.0[..self.0.len()-1].to_vec()))
+        }
+    }
+
+    // Get final component (directory name)
+    pub fn final_component(&self) -> Option<&str> {
+        match self.0.last() {
+            Some(NextDir::In(name)) => Some(name.as_str()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]

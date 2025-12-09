@@ -125,6 +125,8 @@ impl VirtualFilesystem {
 
     /// Get all immediate subdirectories of a given directory (returns just dir names)
     pub fn list_subdirs_in_dir(&self, dirpath: &DirPath) -> Vec<String> {
+        // Wow this is horribly implemented.
+        // TODO: make this more readable.
         let mut subdirs = std::collections::HashSet::new();
 
         for dir in self.content.keys() {

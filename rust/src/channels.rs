@@ -2,8 +2,8 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{BroadcastChannel, MessageEvent};
 use std::cell::RefCell;
-use crate::filesystem::{DirPath, FilePath, Content, VIRTUAL_FS};
-use crate::filesystem::helpers::fetch_text;
+use crate::filesystem::{DirPath, FilePath, VIRTUAL_FS};
+use crate::filesystem::helpers::{get_file_content, path_in_abyss, write_file_abyss};
 use crate::js_interop::add_output;
 
 thread_local! {
@@ -29,13 +29,24 @@ pub fn handle_editor_message(event: MessageEvent) {
                 "file_saved" => {
                     if let Some(content) = content {
                         if let Some(content_str) = content.as_string() {
-                            // Write file to WASM virtual filesystem
+                            // Write file to virtual filesystem
                             let filepath = FilePath::parse(&filename_str, &DirPath::root());
-                            VIRTUAL_FS.with(|vfs| {
-                                vfs.borrow_mut().write_file(&filepath, content_str);
+
+                            // Spawn async task to handle both abyss and regular files
+                            wasm_bindgen_futures::spawn_local(async move {
+                                if path_in_abyss(&filepath.dir) {
+                                    // Handle abyss files
+                                    write_file_abyss(&filepath, content_str).await;
+                                } else {
+                                    // Handle regular virtual filesystem
+                                    VIRTUAL_FS.with(|vfs| {
+                                        vfs.borrow_mut().write_file(&filepath, content_str);
+                                    });
+                                }
+
+                                add_output(&format!("File saved: {}", filename_str));
+                                add_output("&nbsp;");
                             });
-                            add_output(&format!("File saved: {}", filename_str));
-                            add_output("&nbsp;");
                         }
                     }
                 }
@@ -79,11 +90,7 @@ fn build_file_content_message(filename: &str, content: &str) -> js_sys::Object {
 // Send file content via BroadcastChannel
 fn send_file_content(filename: &str, to_editor: bool) {
     let filepath = FilePath::parse(filename, &DirPath::root());
-
-    // Get content from virtual filesystem
-    let content_result = VIRTUAL_FS.with(|vfs| {
-        vfs.borrow().get_content(&filepath).cloned()
-    });
+    let filename = filename.to_string();
 
     let channel = if to_editor {
         EDITOR_CHANNEL.with(|ch| ch.borrow().clone())
@@ -92,36 +99,19 @@ fn send_file_content(filename: &str, to_editor: bool) {
     };
 
     if let Some(channel) = channel {
-        match content_result {
-            Some(Content::InMemory(content)) => {
-                // Send in-memory content
-                let message = build_file_content_message(filename, &content);
-                channel.post_message(&message).ok();
+        // Spawn async task to get file content (works for both abyss and regular files)
+        wasm_bindgen_futures::spawn_local(async move {
+            match get_file_content(&filepath).await {
+                Ok(content) => {
+                    let message = build_file_content_message(&filename, &content);
+                    channel.post_message(&message).ok();
+                }
+                Err(_) => {
+                    // File not found, send empty content
+                    let message = build_file_content_message(&filename, "");
+                    channel.post_message(&message).ok();
+                }
             }
-            Some(Content::ToFetch) => {
-                // Need to fetch - spawn async task
-                let filename = filename.to_string();
-                let channel_clone = channel.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    let filepath = FilePath::parse(&filename, &DirPath::root());
-                    match fetch_text(&filepath.to_url()).await {
-                        Ok(content) => {
-                            let message = build_file_content_message(&filename, &content);
-                            channel_clone.post_message(&message).ok();
-                        }
-                        Err(_) => {
-                            // Send empty content for errors
-                            let message = build_file_content_message(&filename, "");
-                            channel_clone.post_message(&message).ok();
-                        }
-                    }
-                });
-            }
-            None => {
-                // File not found, send empty content
-                let message = build_file_content_message(filename, "");
-                channel.post_message(&message).ok();
-            }
-        }
+        });
     }
 }
