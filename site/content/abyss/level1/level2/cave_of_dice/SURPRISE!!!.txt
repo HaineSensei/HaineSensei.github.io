@@ -1,0 +1,9 @@
+CONGRATULATIONS, YOU FOUND MY FILESYSTEM BACKDOOR! 
+I'm proud of you, I think I know what you probably did:
+You created your own cave_of_dice directory elsewhere causing this directory to be uninitialised and treated like a normal abyss directory.
+
+There are other ways to reach this, but this is the most user-facing way I know. (It was unintended behaviour that I noticed that was sufficiently unlikely to happen by accident that it was worth rewarding.)
+
+Have you found my other secrets yet? I love cheese btw, particularly cheddar and red leicester. 
+
+P.S. If you did create your own cave_of_dice, you might still be able to find the real cave_of_dice within.
