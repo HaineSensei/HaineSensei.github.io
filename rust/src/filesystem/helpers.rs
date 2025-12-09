@@ -1,6 +1,8 @@
+use rand::random_range;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
 use web_sys::{Request, RequestInit, RequestMode, Response, console::log_1};
+use crate::filesystem::cave_of_dice::path_in_cave_of_dice;
 use crate::filesystem::{ABYSS_FS, CURRENT_DIR, Contents, Directories, NextDir};
 
 use super::types::{DirPath, FilePath, Content};
@@ -36,11 +38,28 @@ pub async fn fetch_text(url: &str) -> Result<String, String> {
     text.as_string().ok_or_else(|| "Response text is not a string".to_string())
 }
 
+fn is_dice_file_name(file_name: &str) -> Option<u8> {
+    if file_name.chars().nth(0) == Some('d') {
+        match file_name[1..].split('.').collect::<Vec<_>>().as_slice() {
+            [x, "txt"] => x.parse().ok(),
+            _ => None
+        }
+    } else {
+        None
+    }
+}
+
 // Read content from a Content variant
 async fn read_content_at(content: Option<&Content>, filepath: &FilePath) -> Result<String, String> {
     match content {
         Some(Content::InMemory(text)) => Ok(text.clone()),
-        Some(Content::ToFetch) => fetch_text(&filepath.to_url()).await,
+        Some(Content::ToFetch) => {
+            if path_in_cave_of_dice(&filepath.dir) && let Some(n) = is_dice_file_name(&filepath.file) {
+                Ok(format!("You rolled a {}", random_range(1..=n)))
+            } else {
+                fetch_text(&filepath.to_url()).await
+            }
+        },
         None => Err(format!("{}: No such file", filepath.to_string())),
     }
 }
@@ -110,6 +129,7 @@ pub fn path_in_abyss(path: &DirPath) -> bool {
 
 /// Remove a file from the abyss filesystem
 pub async fn remove_file_abyss(filepath: &FilePath) -> Result<(), String> {
+    path_in_cave_of_dice(&filepath.dir); // Initialize cave_of_dice if needed
     // Try cached path first
     match ABYSS_FS.with_borrow_mut(|afs| afs.sync_remove_file(filepath)) {
         Ok(_) => Ok(()),
@@ -125,6 +145,7 @@ pub async fn remove_file_abyss(filepath: &FilePath) -> Result<(), String> {
 
 /// Remove a directory from the abyss filesystem
 pub async fn remove_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
+    path_in_cave_of_dice(dirpath); // Initialize cave_of_dice if needed
     // Try cached path first
     match ABYSS_FS.with_borrow_mut(|afs| afs.sync_remove_dir(dirpath)) {
         Ok(_) => Ok(()),
@@ -145,6 +166,7 @@ pub async fn remove_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
 
 /// Create a directory in the abyss filesystem
 pub async fn create_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
+    path_in_cave_of_dice(dirpath); // Initialize cave_of_dice if needed
     // Try cached path first
     match ABYSS_FS.with_borrow_mut(|afs| afs.sync_create_dir(dirpath)) {
         Ok(_) => Ok(()),
@@ -163,6 +185,7 @@ pub async fn create_dir_abyss(dirpath: &DirPath) -> Result<(), String> {
 
 /// Write a file to the abyss filesystem
 pub async fn write_file_abyss(filepath: &FilePath, content: String) {
+    path_in_cave_of_dice(&filepath.dir); // Initialize cave_of_dice if needed
     // Try cached path first
     match ABYSS_FS.with_borrow_mut(|afs| afs.sync_write_file(filepath, content.clone())) {
         Ok(_) => {},
@@ -181,6 +204,7 @@ pub async fn write_file_abyss(filepath: &FilePath, content: String) {
 // assumes path is valid
 pub async fn get_directories(path: &DirPath) -> Directories {
     if path_in_abyss(path) {
+        path_in_cave_of_dice(path); // Initialize cave_of_dice if needed
         let msg = format!("{} is in abyss", path.to_string());
         log_1(&msg.into());
 
@@ -210,6 +234,7 @@ pub async fn get_directories(path: &DirPath) -> Directories {
 // Assumes path is valid
 pub async fn get_contents(path: &DirPath) -> Contents {
     if path_in_abyss(path) {
+        path_in_cave_of_dice(path); // Initialize cave_of_dice if needed
         match ABYSS_FS.with_borrow(|afs|
             afs.files.get(path).cloned()
         ) {
@@ -226,7 +251,7 @@ pub async fn get_contents(path: &DirPath) -> Contents {
             .with_borrow(|vfs| vfs.list_files_in_dir(path))
             .iter()
             .map(|file|
-                VIRTUAL_FS.with_borrow(|vfs| 
+                VIRTUAL_FS.with_borrow(|vfs|
                     (
                         file.clone(),
                         vfs.get_content(
