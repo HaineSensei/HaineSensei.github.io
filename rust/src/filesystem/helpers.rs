@@ -1,6 +1,6 @@
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::JsFuture;
-use web_sys::{Request, RequestInit, RequestMode, Response};
+use web_sys::{Request, RequestInit, RequestMode, Response, console::log_1};
 use crate::filesystem::{ABYSS_FS, CURRENT_DIR, Contents, Directories, NextDir};
 
 use super::types::{DirPath, FilePath, Content};
@@ -181,17 +181,22 @@ pub async fn write_file_abyss(filepath: &FilePath, content: String) {
 // assumes path is valid
 pub async fn get_directories(path: &DirPath) -> Directories {
     if path_in_abyss(path) {
-        match ABYSS_FS.with_borrow(|afs| 
+        let msg = format!("{} is in abyss", path.to_string());
+        log_1(&msg.into());
+
+        match ABYSS_FS.with_borrow(|afs|
             afs.dirs.get(path).cloned()
         ) {
             Some(x) => x,
             None => Directories::from_file(
                 &fetch_text(
-                    &format!("{}/!!directories.txt", path.to_string())
+                    &format!("content{}/!!directories.txt", path.to_string())
                 ).await.unwrap()
             )
         }
     } else {
+        let msg = format!("{} is not in abyss", path.to_string());
+        log_1(&msg.into());
         Directories(
             VIRTUAL_FS
             .with_borrow(|vfs| vfs.list_subdirs_in_dir(path))
@@ -211,7 +216,7 @@ pub async fn get_contents(path: &DirPath) -> Contents {
             Some(x) => x,
             None => Contents::from_file(
                 &fetch_text(
-                    &format!("{}/!!contents.txt", path.to_string())
+                    &format!("content{}/!!contents.txt", path.to_string())
                 ).await.unwrap()
             )
         }

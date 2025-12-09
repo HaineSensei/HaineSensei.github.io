@@ -224,7 +224,7 @@ impl AbyssFileSystem {
             Some(x) => x.clone(),
             None => Contents::from_file(
                 &fetch_text(
-                    &format!("{}/!!contents.txt", dirpath.to_string())
+                    &format!("content{}/!!contents.txt", dirpath.to_string())
                 ).await.unwrap()
             )
         }
@@ -235,7 +235,7 @@ impl AbyssFileSystem {
             Some(x) => x.clone(),
             None => Directories::from_file(
                 &fetch_text(
-                    &format!("{}/!!directories.txt", dirpath.to_string())
+                    &format!("content{}/!!directories.txt", dirpath.to_string())
                 ).await.unwrap()
             )
         }
