@@ -209,7 +209,7 @@ pub async fn handle_input(user_input: &str) {
     }
 
     // Add blank line after output (except for clear, handled in process_normal_command)
-    add_output("&nbsp;");
+    add_output("\u{00A0}");
     scroll_to_bottom();
 }
 
