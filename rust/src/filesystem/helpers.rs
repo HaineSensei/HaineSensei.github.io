@@ -92,6 +92,12 @@ pub async fn dir_exists(path: &DirPath) -> bool {
     }
 }
 
+// Helper to check if a file exists in virtual filesystem or abyss
+pub async fn file_exists(filepath: &FilePath) -> bool {
+    let contents = get_contents(&filepath.dir).await;
+    contents.contains(&filepath.file)
+}
+
 // List files and directories in current directory
 pub async fn list_directory(path: &DirPath) -> Vec<String> {
     let mut entries = Vec::new();

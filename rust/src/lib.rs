@@ -230,9 +230,7 @@ pub async fn handle_input(user_input: &str) {
             handle_pretty_confirm(user_input, &filepath, &path_arg);
         }
     }
-
-    // Add blank line after output (except for clear, handled in process_normal_command)
-    add_output("\u{00A0}");
+    
     scroll_to_bottom();
 }
 
@@ -259,8 +257,6 @@ async fn process_normal_command(user_input: &str) {
 
     if user_input == "clear" {
         clear_output();
-        // Note: Don't add blank line or scroll for clear
-        // Early return prevents handle_input from adding &nbsp;
         return;
     }
 
@@ -268,7 +264,7 @@ async fn process_normal_command(user_input: &str) {
 
     // Display output
     if !result.is_empty() {
-        for line in result.split('\n') {
+        for line in result.lines() {
             add_output(line);
         }
     }

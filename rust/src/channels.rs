@@ -45,7 +45,7 @@ pub fn handle_editor_message(event: MessageEvent) {
                                 }
 
                                 add_output(&format!("File saved: {}", filename_str));
-                                add_output("&nbsp;");
+                                add_output("\u{00A0}");
                             });
                         }
                     }
