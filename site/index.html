@@ -166,55 +166,29 @@
             input.focus();
         });
 
-        var inputHistory = {
-            // Array of past inputs, last is most recent.
-            inputs: [],
-            // Currently selected past input. `index === inputs.length` denotes a new input.
-            index: 0,
-        };
-
         // Handle commands - simplified main loop
         input.addEventListener('keydown', async (e) => {
             switch (e.key) {
                 case "ArrowUp":
-                    // Stop default event resetting cursor position
                     e.preventDefault();
-
-                    if (inputHistory.index <= 0) break;
-
-                    // Get Previous Input from History
-                    inputHistory.index -= 1;
-                    input.value = inputHistory.inputs[inputHistory.index];
-                    input.selectionStart = input.selectionEnd = inputHistory.inputs[inputHistory.index].length;
-                    break;
-                    
-                case "ArrowDown":
-                    // Stop default event resetting cursor position
-                    e.preventDefault();
-
-                    if (inputHistory.index >= inputHistory.inputs.length) break;
-
-                    // Get Next Input from History
-                    inputHistory.index += 1;
-                    if (inputHistory.index < inputHistory.inputs.length) {
-                        input.value = inputHistory.inputs[inputHistory.index];
-                        input.selectionStart = input.selectionEnd = inputHistory.inputs[inputHistory.index].length;
-                        break;
+                    if (wasmLoaded) {
+                        const historyValue = wasm.handle_arrow_up();
+                        input.value = historyValue;
+                        input.selectionStart = input.selectionEnd = historyValue.length;
                     }
-                    
-                    // Provide Blank Line for New Input
-                    input.value = "";
+                    break;
+
+                case "ArrowDown":
+                    e.preventDefault();
+                    if (wasmLoaded) {
+                        const historyValue = wasm.handle_arrow_down();
+                        input.value = historyValue;
+                        input.selectionStart = input.selectionEnd = historyValue.length;
+                    }
                     break;
 
                 case "Enter":
                     const userInput = input.value;
-
-                    // Push Input to History and Reset Index to Current
-                    if (userInput.length > 0) {
-                        inputHistory.inputs.push(userInput);
-                        inputHistory.index = inputHistory.inputs.length;
-                    }
-
                     input.value = '';
 
                     if (!wasmLoaded) {
@@ -223,7 +197,7 @@
                     }
 
                     try {
-                        // Pass input to WASM - it handles everything including display
+                        // Pass input to WASM - it handles everything including display and history
                         await wasm.handle_input(userInput);
                     } catch (err) {
                         console.error('Command error:', err);
