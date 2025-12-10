@@ -1,1 +1,1 @@
-Render a markdown file with LaTeX support in a new tab.
+Render a markdown/html file with LaTeX support in a new tab.

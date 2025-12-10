@@ -1,11 +1,11 @@
-pretty - Render markdown file
+pretty - Render markdown/html file
 
 USAGE:
   pretty FILE
 
 DESCRIPTION:
-  Renders a markdown file with LaTeX support in a new browser tab,
-  providing a nicely formatted view of the content.
+  Renders a markdown/html file with LaTeX support in a new 
+  browser tab, providing a nicely formatted view of the content.
 
 EXAMPLES:
   pretty notes.md             Render notes.md
@@ -19,8 +19,8 @@ HOW IT WORKS:
   4. The rendered view is read-only
 
 NOTES:
-  - Best used with .md (markdown) files
+  - Best used with .md (markdown) files or .html files
   - Supports LaTeX math: inline $...$ and display $$...$$
-  - If you specify a non-.md file, you'll be prompted to confirm
+  - If you specify a non-.md/.html file, you'll be prompted to confirm
   - Works with both static content and user-created files
   - The tab can be closed when you're done viewing
