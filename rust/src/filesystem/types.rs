@@ -103,6 +103,7 @@ impl FilePath {
     }
 
     // Check if this file exists in the virtual filesystem
+    // TODO: FIX to use new methods.
     pub fn exists(&self) -> bool {
         VIRTUAL_FS.with(|vfs| {
             vfs.borrow().file_exists(self)

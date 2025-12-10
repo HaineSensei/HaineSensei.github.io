@@ -7,6 +7,7 @@ mod js_interop;
 mod filesystem;
 mod channels;
 mod commands;
+mod input_history;
 
 use js_interop::{add_output, clear_output, scroll_to_bottom};
 use filesystem::{Manifest, DirPath, FilePath, VIRTUAL_FS};
@@ -14,6 +15,7 @@ use filesystem::helpers::fetch_text;
 use channels::{handle_editor_message, handle_pretty_message, EDITOR_CHANNEL, PRETTY_CHANNEL};
 use commands::process_command;
 use commands::builtin::pretty::open_pretty_page;
+use input_history::INPUT_HISTORY;
 
 // Handler for next input - determines what function receives the next user input
 #[derive(Clone)]
@@ -188,10 +190,31 @@ pub fn import_session(session_json: String) -> String {
     }
 }
 
+/// Handle arrow up key - returns previous input from history, or empty string if at beginning
+#[wasm_bindgen]
+pub fn handle_arrow_up() -> String {
+    INPUT_HISTORY.with(|history| {
+        history.borrow_mut().arrow_up().unwrap_or_default()
+    })
+}
+
+/// Handle arrow down key - returns next input from history, or empty string if at end
+#[wasm_bindgen]
+pub fn handle_arrow_down() -> String {
+    INPUT_HISTORY.with(|history| {
+        history.borrow_mut().arrow_down().unwrap_or_default()
+    })
+}
+
 /// Main entry point from JavaScript - handles input and manages display
 #[wasm_bindgen]
 pub async fn handle_input(user_input: &str) {
     let user_input = user_input.trim();
+
+    // Add to history (skips empty inputs internally)
+    INPUT_HISTORY.with(|history| {
+        history.borrow_mut().add_input(user_input.to_string());
+    });
 
     // Display the input
     add_output(&format!("> {}", user_input));
@@ -209,7 +232,7 @@ pub async fn handle_input(user_input: &str) {
     }
 
     // Add blank line after output (except for clear, handled in process_normal_command)
-    add_output("&nbsp;");
+    add_output("\u{00A0}");
     scroll_to_bottom();
 }
 

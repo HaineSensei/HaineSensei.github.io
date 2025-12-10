@@ -82,7 +82,7 @@
         window.addOutput = function(text) {
             const line = document.createElement('div');
             line.className = 'output-line';
-            line.innerHTML = text;
+            line.innerText = text;
             output.appendChild(line);
         };
 
@@ -168,21 +168,42 @@
 
         // Handle commands - simplified main loop
         input.addEventListener('keydown', async (e) => {
-            if (e.key === 'Enter') {
-                const userInput = input.value;
-                input.value = '';
+            switch (e.key) {
+                case "ArrowUp":
+                    e.preventDefault();
+                    if (wasmLoaded) {
+                        const historyValue = wasm.handle_arrow_up();
+                        input.value = historyValue;
+                        input.selectionStart = input.selectionEnd = historyValue.length;
+                    }
+                    break;
 
-                if (wasmLoaded) {
+                case "ArrowDown":
+                    e.preventDefault();
+                    if (wasmLoaded) {
+                        const historyValue = wasm.handle_arrow_down();
+                        input.value = historyValue;
+                        input.selectionStart = input.selectionEnd = historyValue.length;
+                    }
+                    break;
+
+                case "Enter":
+                    const userInput = input.value;
+                    input.value = '';
+
+                    if (!wasmLoaded) {
+                        window.addOutput('Terminal not ready. Please wait...');
+                        break;
+                    }
+
                     try {
-                        // Pass input to WASM - it handles everything including display
+                        // Pass input to WASM - it handles everything including display and history
                         await wasm.handle_input(userInput);
                     } catch (err) {
                         console.error('Command error:', err);
                         window.addOutput(`Error: ${err}`);
                     }
-                } else {
-                    window.addOutput('Terminal not ready. Please wait...');
-                }
+                    break;
             }
         });
     </script>

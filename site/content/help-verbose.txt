@@ -10,7 +10,7 @@ Content:
   help [-v] [COMMAND]  - Show a help message (-v for verbose)
   about          - About this site
   contact        - Contact information
-  pretty FILE    - Render markdown with LaTeX support in new tab
+  pretty FILE    - Render markdown/html with LaTeX support in new tab
 
 File Operations:
   edit FILE      - Edit or create a file (opens in new tab)

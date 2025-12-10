@@ -36,13 +36,14 @@ impl Command for Pretty {
 
         // Check if it's a .md file
         let is_markdown = filepath.file.ends_with(".md");
+        let is_html = filepath.file.ends_with(".html");
 
-        if is_markdown {
+        if is_markdown || is_html {
             // Open directly
             open_pretty_page(&filepath.to_string(), path_arg)
         } else {
             // Ask for confirmation - set handler for next input
-            add_output(&format!("Warning: '{}' is not a markdown file. Render anyway? (y/n)", path_arg));
+            add_output(&format!("Warning: '{}' is not a markdown or html file. Render anyway? (y/n)", path_arg));
 
             crate::NEXT_INPUT_HANDLER.with(|h| {
                 *h.borrow_mut() = crate::NextInputHandler::PrettyConfirm {
