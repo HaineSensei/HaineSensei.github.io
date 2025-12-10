@@ -30,7 +30,7 @@ impl Command for Pretty {
         let filepath = CURRENT_DIR.with(|cd| FilePath::parse(path_arg, &cd.borrow()));
 
         // Check if file exists
-        if !filepath.exists() {
+        if !filepath.exists().await {
             return format!("pretty: {}: No such file", path_arg);
         }
 

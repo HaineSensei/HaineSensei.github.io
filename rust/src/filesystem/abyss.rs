@@ -44,6 +44,11 @@ impl Contents {
     pub fn get(&self, filename: &str) -> Option<&Content> {
         self.0.get(filename)
     }
+
+    /// Check if a filename exists in this Contents
+    pub fn contains(&self, filename: &str) -> bool {
+        self.0.contains_key(filename)
+    }
 }
 
 impl Directories {

@@ -102,12 +102,9 @@ impl FilePath {
         format!("./content/{}{}", path_component, self.file)
     }
 
-    // Check if this file exists in the virtual filesystem
-    // TODO: FIX to use new methods.
-    pub fn exists(&self) -> bool {
-        VIRTUAL_FS.with(|vfs| {
-            vfs.borrow().file_exists(self)
-        })
+    // Check if this file exists in the virtual filesystem or abyss
+    pub async fn exists(&self) -> bool {
+        crate::filesystem::helpers::file_exists(self).await
     }
 }
 
