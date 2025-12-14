@@ -1,4 +1,3 @@
-use rand::rngs::ThreadRng;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use std::cell::RefCell;
