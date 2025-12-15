@@ -2,7 +2,7 @@
 set -e
 
 echo "Installing zip..."
-apt-get update && apt-get install -y zip
+sudo apt-get update && sudo apt-get install -y zip
 
 echo "Installing Rust..."
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
