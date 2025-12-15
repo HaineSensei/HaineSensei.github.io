@@ -41,6 +41,14 @@ jobs:
         run: |
           cp -r site/* dist/
 
+      - name: Install zip
+        run: |
+          sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Generate secret_lair zip
+        run: |
+          zip -r -e -P Ch3dd4R dist/secret_lair.zip secret_lair
+
       - name: Generate content manifest
         run: |
           python3 scripts/generate-manifest.py
