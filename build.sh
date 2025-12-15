@@ -1,14 +1,13 @@
 #!/bin/bash
 set -e
 
-uname -m
-
 echo "Installing zip utility..."
 mkdir -p $HOME/bin
-curl -L https://github.com/pmqs/zip/releases/download/v3.0/zip-3.0-linux-x86_64.tar.gz -o zip.tar.gz
-tar -xzf zip.tar.gz -C $HOME/bin --strip-components=1
+curl -L http://ftp.uk.debian.org/debian/pool/main/z/zip/zip_3.0-13_amd64.deb -o zip.deb
+ar x zip.deb data.tar.xz
+tar -xf data.tar.xz -C $HOME/bin --strip-components=2 ./usr/bin/zip
 export PATH=$HOME/bin:$PATH
-rm zip.tar.gz
+rm zip.deb data.tar.xz
 
 echo "Installing Rust..."
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
