@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+uname -m
+
 echo "Installing zip utility..."
 mkdir -p $HOME/bin
 curl -L https://github.com/pmqs/zip/releases/download/v3.0/zip-3.0-linux-x86_64.tar.gz -o zip.tar.gz
