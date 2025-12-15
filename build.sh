@@ -1,8 +1,12 @@
 #!/bin/bash
 set -e
 
-echo "Installing zip..."
-sudo apt-get update && sudo apt-get install -y zip
+echo "Installing zip utility..."
+mkdir -p $HOME/bin
+curl -L https://github.com/pmqs/zip/releases/download/v3.0/zip-3.0-linux-x86_64.tar.gz -o zip.tar.gz
+tar -xzf zip.tar.gz -C $HOME/bin --strip-components=1
+export PATH=$HOME/bin:$PATH
+rm zip.tar.gz
 
 echo "Installing Rust..."
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
