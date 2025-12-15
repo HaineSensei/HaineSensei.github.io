@@ -25,7 +25,7 @@ impl Command for Secret {
         if args.is_empty() {
             EMPTY_SECRET.to_string()
         } else {
-            let password = args.join("_");
+            let password = args.join("");
             let zip_bytes = match fetch_secret_zip().await {
                 Ok(x) => x,
                 Err(_) => return "I failed to fetch the password checker, so I guess my secrets are safe forever!".to_string(),
