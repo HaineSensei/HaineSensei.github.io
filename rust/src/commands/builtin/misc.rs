@@ -75,17 +75,3 @@ impl Command for Fib {
         }
     }
 }
-
-pub struct Secret;
-impl CommandData for Secret {
-    fn name(&self) -> &str { "secret" }
-}
-impl Command for Secret {
-    async fn execute(&self, args: &[&str]) -> String {
-        if args.is_empty() {
-            "You found my secret hideout, good luck getting in though.".to_string()
-        } else {
-            "You will never find my true secrets!".to_string()
-        }
-    }
-}
