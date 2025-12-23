@@ -44,7 +44,15 @@ $$\langle p, q\rangle_{-1,1} := \int_{-1}^1 p(x) q(x) \, dx.$$
 
 To begin investigating this, we will see how it acts on the monomial basis:
 
-$$\langle x^m, x^n \rangle_{-1,1} = \int_{-1}^1 x^{m + n} \, dx = \left[\frac{x^{n + m + 1}}{n + m + 1}\right]_{-1}^1 = \begin{cases} \frac{2}{n + m + 1} & \text{if } n + m + 1 \text{ is odd,} \\ 0 & \text{otherwise.} \end{cases}$$
+$$\begin{aligned}
+\langle x^m, x^n \rangle_{-1,1} &= \int_{-1}^1 x^{m+n}\, dx \\
+&= \left[ \frac{x^{m+n+1}}{m+n+1} \right]_{-1}^1 \\
+&=
+\begin{cases}
+\frac{2}{m+n+1} & \text{if } m + n \text{ is even,} \\
+0 & \text{otherwise.}
+\end{cases}
+\end{aligned}$$
 
 This shows that $x^m$ and $x^n$ are orthogonal if and only if $n$ and $m$ have opposite odd/even parity, so the monomial basis is not already an orthogonal basis.
 
@@ -64,7 +72,11 @@ We will use the Gram-Schmidt orthogonalisation process to begin producing an ort
 
 - $x^4$: orthogonal to both $x$ and $x^3$ but not to $1$ and $x^2$:
 
-  $$x^4 - \frac{\langle x^4, 1\rangle_{-1,1}}{\langle 1, 1 \rangle_{-1,1}} \cdot 1 - \frac{\langle x^4, x^2 - \frac{1}{3}\rangle_{-1, 1}}{\langle x^2 - \frac{1}{3}, x^2 - \frac{1}{3} \rangle_{-1,1}} \cdot \left(x^2 - \frac{1}{3}\right) = x^4 - \frac{6x^2}{7} + \frac{3}{35}$$
+  $$\begin{aligned}
+  & x^4 - \frac{\langle x^4, 1 \rangle_{-1,1}}{\langle 1, 1 \rangle_{-1,1}} \cdot 1 \\
+  & \quad - \frac{\langle x^4, x^2 - \frac{1}{3} \rangle_{-1,1}}{\langle x^2 - \frac{1}{3}, x^2 - \frac{1}{3} \rangle_{-1,1}} \cdot \left( x^2 - \frac{1}{3} \right) \\
+  &= x^4 - \frac{6x^2}{7} + \frac{3}{35}
+  \end{aligned}$$
 
 And so on...
 
