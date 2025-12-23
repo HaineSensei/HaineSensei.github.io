@@ -360,18 +360,14 @@
         if (!filePath) {
             showError('No file specified in URL');
         } else {
-            // Request file content from terminal
+            // Request file content from terminal (will replace server version if available)
             channel.postMessage({
                 action: 'request_file',
                 filename: filePath
             });
 
-            // Fallback: try to fetch from server after 1 second if no response
-            setTimeout(() => {
-                if (document.getElementById('content').innerHTML === '') {
-                    loadAndRenderMarkdownFromServer(filePath);
-                }
-            }, 1000);
+            // Also fetch from server immediately (will be replaced if terminal responds)
+            loadAndRenderMarkdownFromServer(filePath);
         }
 
         async function loadAndRenderMarkdownFromServer(filePath) {
