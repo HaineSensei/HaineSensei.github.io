@@ -44,7 +44,7 @@ $$\langle p, q\rangle_{-1,1} := \int_{-1}^1 p(x) q(x) \, dx.$$
 
 To begin investigating this, we will see how it acts on the monomial basis:
 
-$$\langle x^m, x^n \rangle_{-1,1} = \int_{-1}^1 x^{m + n} \, dx = \left[\frac{x^{n + m + 1}}{n + m + 1}\right]_{-1}^1 = \begin{cases} \frac{2}{n + m + 1} & \text{if $n + m + 1 $ is odd,} \\ 0 & \text{otherwise.} \end{cases}$$
+$$\langle x^m, x^n \rangle_{-1,1} = \int_{-1}^1 x^{m + n} \, dx = \left[\frac{x^{n + m + 1}}{n + m + 1}\right]_{-1}^1 = \begin{cases} \frac{2}{n + m + 1} & \text{if $n + m + 1 $ is odd,} \\\ 0 & \text{otherwise.} \end{cases}$$
 
 This shows that $x^m$ and $x^n$ are orthogonal if and only if $n$ and $m$ have opposite odd/even parity, so the monomial basis is not already an orthogonal basis.
 
