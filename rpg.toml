@@ -1,0 +1,159 @@
+root_directory = "abyss/rpg"
+
+[[location]]
+name = "home"
+safe = true
+
+[[location]]
+name = "forest_path"
+safe = false
+
+[location.initial_spawns]
+[[location.initial_spawns.enemy]]
+name = "goblin"
+level = 1
+
+[[location.spawns]]
+chances = 1
+[[location.spawns.enemy]]
+name = "goblin"
+level = 3
+
+[[location.spawns]]
+chances = 2
+[[location.spawns.enemy]]
+name = "goblin"
+level = 2
+
+[[location.spawns]]
+chances = 1  # Multi-enemy example
+[[location.spawns.enemy]]
+name = "goblin"
+level = 1
+[[location.spawns.enemy]]
+name = "goblin"
+level = 1
+
+[[location]]
+name = "boss_room"
+safe = false
+
+[location.initial_spawns]
+[[location.initial_spawns.enemy]]
+name = "demon_lord"
+level = 99
+
+# lack of location.spawns says empty after complete
+
+[[connection]]
+locations = ["home","forest_path"]
+
+[[connection]]
+locations = ["forest_path","boss_room"]
+
+# per-level format with int division:
+# (const + mult*level)/div
+
+[[enemy]]
+name = "goblin"
+[enemy.befriend]
+possible = true
+chance = 0.8
+
+[[enemy.drops]]
+name = "club"
+chance = 1.0
+
+[[enemy.drops]]
+name = "rags"
+chance = 0.3
+
+[enemy.exp_drop]
+const = 0
+mult = 2
+div = 1
+
+[enemy.level_up_exp]
+const = 1
+mult = 0
+div = 1
+
+[enemy.attack]
+const = 1
+mult = 1
+div = 1
+
+[enemy.defense]
+const = 0
+mult = 1
+div = 3
+
+[enemy.health]
+const = 3
+mult = 2
+div = 1
+
+[[enemy]]
+name = "demon_king"
+
+[enemy.befriend]
+possible = false
+
+[[enemy.drops]]
+name = "dark_crown"
+chance = 1.0
+
+[enemy.exp_drop]
+const = 0
+mult = 2
+div = 1
+
+[enemy.level_up_exp]
+const = 10
+mult = 0
+div = 1
+
+[enemy.attack]
+const = 4
+mult = 0
+div = 1
+
+[enemy.defense]
+const = 0
+mult = 1
+div = 3
+
+[enemy.health]
+const = 20
+mult = 0
+div = 1
+
+[player]
+[player.level_up_exp]
+const = 16
+mult = 5
+div = 2
+
+[player.attack]
+const = 2
+mult = 1
+div = 3
+
+[player.defense]
+const = 0
+mult = 1
+div = 4
+
+[player.health]
+const = 18
+mult = 8
+div = 3
+
+[[item]]
+name = "club"
+sort = "weapon"
+attack_plus = 1
+
+[[item]]
+name = "dark_crown"
+sort = "flavour"
