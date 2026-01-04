@@ -32,10 +32,17 @@ cd ..
 echo "Copying site files..."
 cp -r site/* dist/
 
-echo "generating secret_lair zip"
+echo "Generating secret_lair zip..."
 zip -r -e -P Ch3dd4R dist/secret_lair.zip secret_lair
 
 echo "Generating content manifest..."
 python3 scripts/generate-manifest.py
+
+echo "Generating rpg contents..."
+cd rpg-generator
+cargo build
+cp target/debug/rpg-generator ../rpg-generator
+cd ..
+./rpg-generator rpg.toml
 
 echo "Build complete!"

@@ -53,6 +53,14 @@ jobs:
         run: |
           python3 scripts/generate-manifest.py
 
+      - name: Generate RPG contents
+        run: |
+          cd rpg-generator
+          cargo build
+          cp target/debug/rpg-generator ../rpg-generator
+          cd ..
+          ./rpg-generator rpg.toml
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
