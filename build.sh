@@ -41,8 +41,8 @@ python3 scripts/generate-manifest.py
 echo "Generating rpg contents..."
 cd rpg-generator
 cargo build
-cp target/debug/rpg-generator ../rpg-generator
+cp target/debug/rpg-generator ../rpg-generator.o
 cd ..
-./rpg-generator rpg.toml
+./rpg-generator.o rpg.toml
 
 echo "Build complete!"

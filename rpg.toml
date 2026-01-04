@@ -1,10 +1,10 @@
 root_directory = "abyss/rpg"
 
-[[location]]
+[[location]] # home
 name = "home"
 safe = true
 
-[[location]]
+[[location]] # forest_path
 name = "forest_path"
 safe = false
 
@@ -34,7 +34,7 @@ level = 1
 name = "goblin"
 level = 1
 
-[[location]]
+[[location]] # boss_room
 name = "boss_room"
 safe = false
 
@@ -45,16 +45,16 @@ level = 99
 
 # lack of location.spawns says empty after complete
 
-[[connection]]
+[[connection]] # home-forest_path
 locations = ["home","forest_path"]
 
-[[connection]]
+[[connection]] # forest_path-boss_room
 locations = ["forest_path","boss_room"]
 
 # per-level format with int division:
 # (const + mult*level)/div
 
-[[enemy]]
+[[enemy]] # goblin
 name = "goblin"
 [enemy.befriend]
 possible = true
@@ -93,7 +93,7 @@ const = 3
 mult = 2
 div = 1
 
-[[enemy]]
+[[enemy]] # demon_king
 name = "demon_king"
 
 [enemy.befriend]
@@ -149,11 +149,11 @@ const = 18
 mult = 8
 div = 3
 
-[[item]]
+[[item]] # club
 name = "club"
 sort = "weapon"
 attack_plus = 1
 
-[[item]]
+[[item]] # dark_crown
 name = "dark_crown"
 sort = "flavour"

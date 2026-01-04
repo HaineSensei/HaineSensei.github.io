@@ -57,9 +57,9 @@ jobs:
         run: |
           cd rpg-generator
           cargo build
-          cp target/debug/rpg-generator ../rpg-generator
+          cp target/debug/rpg-generator ../rpg-generator.o
           cd ..
-          ./rpg-generator rpg.toml
+          ./rpg-generator.o rpg.toml
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
