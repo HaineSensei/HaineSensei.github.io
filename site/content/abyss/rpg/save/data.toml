@@ -1,0 +1,13 @@
+current = "home"
+safe = "home" # respawn location
+
+[[location]]
+name = "home"
+clear = true
+
+[[location]]
+name = "forest"
+clear = false
+
+[inventory]
+contents = [] # nothing except map
