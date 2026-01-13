@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPU Game of Life</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Courier New', monospace;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #0f0;
+            padding: 20px;
+            border: 2px solid #0f0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        button {
+            background: #000;
+            color: #0f0;
+            border: 2px solid #0f0;
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+        }
+        button:hover {
+            background: #0f0;
+            color: #000;
+        }
+        #status {
+            color: #0f0;
+            margin-top: 10px;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+    <div id="ui">
+        <div><strong>GPU GAME OF LIFE</strong></div>
+        <div style="margin: 10px 0;">
+            <button onclick="togglePause()">PAUSE</button>
+            <button onclick="step()">STEP</button>
+            <button onclick="randomize()">RANDOM</button>
+            <button onclick="clearGrid()">CLEAR</button>
+        </div>
+        <div id="status">
+            Gen: <span id="gen">0</span> | 
+            FPS: <span id="fps">0</span> | 
+            Size: <span id="size">0x0</span><br>
+            <span id="borderStatus" style="color: #f80;">Border: OFF</span>
+        </div>
+        <div style="margin-top: 10px; font-size: 10px; opacity: 0.7;">
+            Click & drag to draw | SPACE to pause | H to hide UI | B for random border
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl2');
+
+        if (!gl) {
+            alert('WebGL2 required but not available');
+        }
+
+        // Set canvas resolution
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            document.getElementById('size').textContent = `${canvas.width}x${canvas.height}`;
+        }
+        resize();
+
+        // Vertex shader
+        const vsSource = `#version 300 es
+            in vec4 aPos;
+            out vec2 vUV;
+            void main() {
+                vUV = aPos.xy * 0.5 + 0.5;
+                gl_Position = aPos;
+            }
+        `;
+
+        // Game of Life compute shader
+        const computeFS = `#version 300 es
+            precision highp float;
+            uniform sampler2D uState;
+            uniform vec2 uRes;
+            uniform float uFrame;
+            uniform float uRandomBorder;
+            in vec2 vUV;
+            out vec4 outColor;
+            
+            // Pseudo-random hash function
+            float hash(vec2 p, float seed) {
+                vec3 p3 = fract(vec3(p.xyx) * 0.1031 + seed * 0.0001);
+                p3 += dot(p3, p3.yzx + 33.33);
+                return fract((p3.x + p3.y) * p3.z);
+            }
+            
+            void main() {
+                vec2 px = 1.0 / uRes;
+                vec2 coord = vUV * uRes;
+                
+                // Check if we're at the outermost border (exactly 1 pixel from edge)
+                bool atBorder = coord.x < 1.0 || coord.x > uRes.x - 1.0 ||
+                                coord.y < 1.0 || coord.y > uRes.y - 1.0;
+                
+                float alive = 0.0;
+                
+                // If random border is enabled and we're at the border, just randomize 50/50
+                if (uRandomBorder > 0.5 && atBorder) {
+                    float rnd = hash(coord, uFrame);
+                    alive = (rnd < 0.5) ? 1.0 : 0.0;
+                } else {
+                    // Interior: normal Game of Life rules
+                    float self = texture(uState, vUV).r;
+                    
+                    // Count neighbors
+                    float n = 0.0;
+                    n += texture(uState, vUV + vec2(-px.x, -px.y)).r;
+                    n += texture(uState, vUV + vec2(  0.0, -px.y)).r;
+                    n += texture(uState, vUV + vec2( px.x, -px.y)).r;
+                    n += texture(uState, vUV + vec2(-px.x,   0.0)).r;
+                    n += texture(uState, vUV + vec2( px.x,   0.0)).r;
+                    n += texture(uState, vUV + vec2(-px.x,  px.y)).r;
+                    n += texture(uState, vUV + vec2(  0.0,  px.y)).r;
+                    n += texture(uState, vUV + vec2( px.x,  px.y)).r;
+                    
+                    // Game of Life rules
+                    if (self > 0.5) {
+                        // Alive: survive with 2 or 3 neighbors
+                        alive = (n >= 1.5 && n <= 3.5) ? 1.0 : 0.0;
+                    } else {
+                        // Dead: born with exactly 3 neighbors
+                        alive = (n >= 2.5 && n <= 3.5) ? 1.0 : 0.0;
+                    }
+                }
+                
+                outColor = vec4(alive, alive, alive, 1.0);
+            }
+        `;
+
+        // Display shader
+        const displayFS = `#version 300 es
+            precision highp float;
+            uniform sampler2D uState;
+            in vec2 vUV;
+            out vec4 outColor;
+            
+            void main() {
+                float v = texture(uState, vUV).r;
+                outColor = vec4(0.0, v * 0.9, v * 0.3, 1.0);
+            }
+        `;
+
+        function compileShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                return null;
+            }
+            return shader;
+        }
+
+        function createProgram(vs, fs) {
+            const program = gl.createProgram();
+            gl.attachShader(program, compileShader(gl.VERTEX_SHADER, vs));
+            gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, fs));
+            gl.linkProgram(program);
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error('Program link error:', gl.getProgramInfoLog(program));
+                return null;
+            }
+            return program;
+        }
+
+        const computeProg = createProgram(vsSource, computeFS);
+        const displayProg = createProgram(vsSource, displayFS);
+
+        // Full-screen quad
+        const quadVerts = new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]);
+        const quadBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, quadVerts, gl.STATIC_DRAW);
+
+        // Create two textures for ping-pong
+        const textures = [0, 1].map(() => {
+            const tex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+            return tex;
+        });
+
+        // Create two framebuffers
+        const fbs = [0, 1].map((i) => {
+            const fb = gl.createFramebuffer();
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+            gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, textures[i], 0);
+            return fb;
+        });
+
+        let current = 0;
+
+        function initTextures() {
+            for (let i = 0; i < 2; i++) {
+                gl.bindTexture(gl.TEXTURE_2D, textures[i]);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+            }
+        }
+
+        function randomize() {
+            const size = canvas.width * canvas.height;
+            const data = new Uint8Array(size * 4);
+            for (let i = 0; i < size; i++) {
+                const alive = Math.random() > 0.6 ? 255 : 0;
+                data[i * 4] = alive;
+                data[i * 4 + 1] = alive;
+                data[i * 4 + 2] = alive;
+                data[i * 4 + 3] = 255;
+            }
+            gl.bindTexture(gl.TEXTURE_2D, textures[current]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+            generation = 0;
+            console.log('Randomized:', canvas.width, 'x', canvas.height);
+        }
+
+        function clearGrid() {
+            const size = canvas.width * canvas.height * 4;
+            const data = new Uint8Array(size);
+            gl.bindTexture(gl.TEXTURE_2D, textures[current]);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, canvas.width, canvas.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+            generation = 0;
+        }
+
+        let running = true;
+        let generation = 0;
+        let lastFpsTime = 0;
+        let frameCount = 0;
+        let randomBorder = false;
+
+        function step() {
+            const src = current;
+            const dst = 1 - current;
+
+            // Compute
+            gl.useProgram(computeProg);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, fbs[dst]);
+            gl.viewport(0, 0, canvas.width, canvas.height);
+
+            const aPosLoc = gl.getAttribLocation(computeProg, 'aPos');
+            gl.enableVertexAttribArray(aPosLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, textures[src]);
+            gl.uniform1i(gl.getUniformLocation(computeProg, 'uState'), 0);
+            gl.uniform2f(gl.getUniformLocation(computeProg, 'uRes'), canvas.width, canvas.height);
+            gl.uniform1f(gl.getUniformLocation(computeProg, 'uFrame'), generation);
+            gl.uniform1f(gl.getUniformLocation(computeProg, 'uRandomBorder'), randomBorder ? 1.0 : 0.0);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            // Display
+            gl.useProgram(displayProg);
+            gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+            const displayPosLoc = gl.getAttribLocation(displayProg, 'aPos');
+            gl.enableVertexAttribArray(displayPosLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.vertexAttribPointer(displayPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+            gl.activeTexture(gl.TEXTURE0);
+            gl.bindTexture(gl.TEXTURE_2D, textures[dst]);
+            gl.uniform1i(gl.getUniformLocation(displayProg, 'uState'), 0);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+            current = dst;
+            generation++;
+        }
+
+        function render(time) {
+            if (running) {
+                step();
+            }
+
+            frameCount++;
+            if (time - lastFpsTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsTime = time;
+            }
+
+            document.getElementById('gen').textContent = generation;
+            requestAnimationFrame(render);
+        }
+
+        function togglePause() {
+            running = !running;
+            event.target.textContent = running ? 'PAUSE' : 'PLAY';
+        }
+
+        // Mouse drawing
+        let drawing = false;
+        canvas.addEventListener('mousedown', () => drawing = true);
+        canvas.addEventListener('mouseup', () => drawing = false);
+        canvas.addEventListener('mousemove', (e) => {
+            if (!drawing) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / rect.width * canvas.width);
+            const y = Math.floor((canvas.height - (e.clientY - rect.top) / rect.height * canvas.height));
+            
+            const size = 7;
+            const brush = new Uint8Array(size * size * 4);
+            brush.fill(255);
+            
+            gl.bindTexture(gl.TEXTURE_2D, textures[current]);
+            gl.texSubImage2D(gl.TEXTURE_2D, 0, 
+                Math.max(0, x - Math.floor(size/2)), 
+                Math.max(0, y - Math.floor(size/2)), 
+                size, size, gl.RGBA, gl.UNSIGNED_BYTE, brush);
+        });
+
+        // Keyboard
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                running = !running;
+            } else if (e.code === 'KeyH') {
+                e.preventDefault();
+                const ui = document.getElementById('ui');
+                ui.style.display = ui.style.display === 'none' ? 'block' : 'none';
+            } else if (e.code === 'KeyB') {
+                e.preventDefault();
+                randomBorder = !randomBorder;
+                const status = document.getElementById('borderStatus');
+                status.textContent = 'Border: ' + (randomBorder ? 'ON' : 'OFF');
+                status.style.color = randomBorder ? '#0f0' : '#f80';
+                console.log('Random border:', randomBorder ? 'ON' : 'OFF');
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            resize();
+            initTextures();
+            randomize();
+        });
+
+        // Start
+        initTextures();
+        randomize();
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

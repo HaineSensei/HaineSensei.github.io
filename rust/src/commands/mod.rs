@@ -140,6 +140,7 @@ pub async fn process_command(command: &str) -> String {
 
         "fib" => Fib.execute(&parts[1..]).await,
         "secret" => Secret.execute(&parts[1..]).await,
+        "gol" => Gol.execute(&parts[1..]).await,
 
         "echo" => Echo.execute(&parts[1..]).await,
 
@@ -184,6 +185,8 @@ pub fn command_data(name: &str) -> Box<dyn CommandData> {
         "fib" => Box::new(Fib),
 
         "secret" => Box::new(Secret),
+
+        "gol" => Box::new(Gol),
 
         "echo" => Box::new(Echo),
 

@@ -12,6 +12,9 @@ File Operations:
 Session:
   save-session, load-session
 
+By Claude:
+  gol
+
 Other:
   clear, hello, info, fib, echo
 

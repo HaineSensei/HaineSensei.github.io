@@ -1,0 +1,1 @@
+Open Conway's Game of Life (GPU-accelerated) in a new tab.
