@@ -24,6 +24,9 @@ Session Management:
   save-session   - Export all in-memory files as JSON (downloads with timestamp)
   load-session   - Import a previously saved session file
 
+By Claude:
+  gol            - GPU-accelerated Conway's Game of Life (opens in new tab)
+
 Other:
   clear          - Clear the terminal
   hello          - Greeting from Rust/WASM

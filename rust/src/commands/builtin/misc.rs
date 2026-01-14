@@ -75,3 +75,22 @@ impl Command for Fib {
         }
     }
 }
+
+pub struct Gol;
+impl CommandData for Gol {
+    fn name(&self) -> &str { "gol" }
+}
+impl Command for Gol {
+    async fn execute(&self, _args: &[&str]) -> String {
+        let url = "./game-of-life.html";
+
+        if let Some(window) = web_sys::window() {
+            match window.open_with_url_and_target(url, "_blank") {
+                Ok(_) => "Opening Game of Life in new tab...".to_string(),
+                Err(_) => "Error: Failed to open new tab. Please check your browser's popup settings.".to_string()
+            }
+        } else {
+            "Error: Could not access window object".to_string()
+        }
+    }
+}
